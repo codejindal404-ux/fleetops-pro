@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { config } from '../config/index.ts';
-import { Role } from '../services/dbStore.ts';
+import { Role } from '../types.ts';
 
 export interface AuthUserPayload {
   userId: string;
@@ -45,3 +45,4 @@ export const authMiddleware = (req: Request, res: Response, next: NextFunction):
 };
 
 export const authenticateToken = authMiddleware;
+export default authMiddleware;

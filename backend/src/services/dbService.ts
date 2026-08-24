@@ -1,9 +1,7 @@
 import { firebaseService } from './firebaseService.ts';
-import { dbStore } from '../../../src/services/dbStore.ts';
 
 export class DBService {
   public firebase = firebaseService;
-  public store = dbStore;
 
   public async getUsers() {
     return firebaseService.getCollection('users');
@@ -35,4 +33,5 @@ export class DBService {
 }
 
 export const dbService = new DBService();
-export { firebaseService, dbStore };
+export { firebaseService };
+export default dbService;

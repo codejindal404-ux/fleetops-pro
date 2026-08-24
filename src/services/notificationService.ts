@@ -1,10 +1,10 @@
-import { dbStore, NotificationRecord, NotificationType } from './dbStore.ts';
+import { Notification, NotificationType, Role, User } from '../types.ts';
+import { firebaseService } from './firebaseService.ts';
 import { sendToUser, sendToRole } from './socketService.ts';
-import { Role } from '../types.ts';
 
 export class NotificationService {
   /**
-   * Create notification, store in database, and dispatch real-time Socket.IO event
+   * Create notification, store in Firestore, and dispatch real-time Socket.IO event
    */
   public async createNotification(data: {
     userId: string;
@@ -14,16 +14,21 @@ export class NotificationService {
     link?: string;
     data?: any;
     targetRole?: Role;
-  }): Promise<NotificationRecord> {
-    const record = dbStore.createNotification({
-      userId: data.userId,
-      title: data.title,
-      message: data.message,
-      type: data.type,
-      link: data.link,
-      data: data.data,
-      isRead: false
-    });
+  }): Promise<Notification> {
+    const notifId = `notif_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const record = await firebaseService.createDocument<Notification>(
+      'notifications',
+      {
+        userId: data.userId,
+        title: data.title,
+        message: data.message,
+        type: data.type,
+        link: data.link || '',
+        data: data.data || null,
+        isRead: false
+      },
+      notifId
+    );
 
     // Real-time notification dispatched directly to user's personal socket room
     sendToUser(data.userId, 'NOTIFICATION_RECEIVED', record);
@@ -46,9 +51,9 @@ export class NotificationService {
     type: NotificationType;
     link?: string;
     data?: any;
-  }): Promise<NotificationRecord[]> {
-    const users = dbStore.getUsers().filter((u) => u.role === role);
-    const created: NotificationRecord[] = [];
+  }): Promise<Notification[]> {
+    const users = await firebaseService.getCollection<User>('users', [{ field: 'role', op: '==', value: role }]);
+    const created: Notification[] = [];
 
     for (const u of users) {
       const record = await this.createNotification({
@@ -77,8 +82,9 @@ export class NotificationService {
   /**
    * Fetch all notifications for a specific user
    */
-  public getUserNotifications(userId: string) {
-    const list = dbStore.getUserNotifications(userId);
+  public async getUserNotifications(userId: string) {
+    const list = await firebaseService.getNotificationsByUser(userId);
+    list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     const unreadCount = list.filter((n) => !n.isRead).length;
     return {
       notifications: list,
@@ -89,23 +95,33 @@ export class NotificationService {
   /**
    * Mark a single notification as read
    */
-  public markAsRead(id: string, userId: string): NotificationRecord | null {
-    return dbStore.markNotificationAsRead(id, userId);
+  public async markAsRead(id: string, userId: string): Promise<Notification | null> {
+    const notif = await firebaseService.getDocument<Notification>('notifications', id);
+    if (!notif || notif.userId !== userId) return null;
+    return firebaseService.updateDocument<Notification>('notifications', id, { isRead: true });
   }
 
   /**
    * Mark all notifications as read for a user
    */
-  public markAllAsRead(userId: string): number {
-    return dbStore.markAllNotificationsAsRead(userId);
+  public async markAllAsRead(userId: string): Promise<number> {
+    const list = await firebaseService.getNotificationsByUser(userId);
+    const unread = list.filter((n) => !n.isRead);
+    for (const n of unread) {
+      await firebaseService.updateDocument('notifications', n.id, { isRead: true });
+    }
+    return unread.length;
   }
 
   /**
    * Delete a notification
    */
-  public deleteNotification(id: string, userId: string): boolean {
-    return dbStore.deleteNotification(id, userId);
+  public async deleteNotification(id: string, userId: string): Promise<boolean> {
+    const notif = await firebaseService.getDocument<Notification>('notifications', id);
+    if (!notif || notif.userId !== userId) return false;
+    return firebaseService.deleteDocument('notifications', id);
   }
 }
 
 export const notificationService = new NotificationService();
+export default notificationService;

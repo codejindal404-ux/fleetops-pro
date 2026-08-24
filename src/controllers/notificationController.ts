@@ -13,7 +13,7 @@ export class NotificationController {
         return res.status(401).json({ success: false, message: 'Unauthorized' });
       }
 
-      const result = notificationService.getUserNotifications(req.user.userId);
+      const result = await notificationService.getUserNotifications(req.user.userId);
       return res.json({
         success: true,
         data: result.notifications,
@@ -36,7 +36,7 @@ export class NotificationController {
       }
 
       const { id } = req.params;
-      const updated = notificationService.markAsRead(id, req.user.userId);
+      const updated = await notificationService.markAsRead(id, req.user.userId);
 
       if (!updated) {
         return res.status(404).json({ success: false, message: 'Notification not found' });
@@ -63,7 +63,7 @@ export class NotificationController {
         return res.status(401).json({ success: false, message: 'Unauthorized' });
       }
 
-      const updatedCount = notificationService.markAllAsRead(req.user.userId);
+      const updatedCount = await notificationService.markAllAsRead(req.user.userId);
       return res.json({
         success: true,
         message: `${updatedCount} notifications marked as read`,
@@ -86,7 +86,7 @@ export class NotificationController {
       }
 
       const { id } = req.params;
-      const deleted = notificationService.deleteNotification(id, req.user.userId);
+      const deleted = await notificationService.deleteNotification(id, req.user.userId);
 
       if (!deleted) {
         return res.status(404).json({ success: false, message: 'Notification not found' });
@@ -104,3 +104,4 @@ export class NotificationController {
 }
 
 export const notificationController = new NotificationController();
+export default notificationController;

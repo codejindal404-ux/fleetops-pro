@@ -1,4 +1,5 @@
-import { dbStore } from './dbStore.ts';
+import { firebaseService } from './firebaseService.ts';
+import { Invoice } from '../../../src/types.ts';
 
 export interface PaymentProcessingResult {
   success: boolean;
@@ -9,7 +10,7 @@ export interface PaymentProcessingResult {
 
 export class PaymentService {
   public async processInvoicePayment(invoiceId: string, amount: number, paymentMethod: string): Promise<PaymentProcessingResult> {
-    const invoice = dbStore.getInvoiceById(invoiceId);
+    const invoice = await firebaseService.getDocument<Invoice>('invoices', invoiceId);
     if (!invoice) {
       return { success: false, message: 'Invoice not found' };
     }
@@ -19,7 +20,11 @@ export class PaymentService {
     }
 
     const transactionId = `TXN_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
-    const paidInvoice = dbStore.payInvoice(invoiceId);
+    const paidAt = new Date().toISOString();
+    const paidInvoice = await firebaseService.updateDocument<Invoice>('invoices', invoiceId, {
+      status: 'PAID',
+      paidAt
+    });
 
     if (!paidInvoice) {
       return { success: false, message: 'Failed to update invoice payment status' };
@@ -28,10 +33,11 @@ export class PaymentService {
     return {
       success: true,
       transactionId,
-      paidAt: paidInvoice.paidAt || new Date().toISOString(),
+      paidAt,
       message: `Payment of $${amount} via ${paymentMethod} successfully processed.`
     };
   }
 }
 
 export const paymentService = new PaymentService();
+export default paymentService;

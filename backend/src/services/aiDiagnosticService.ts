@@ -1,4 +1,5 @@
-import { dbStore } from './dbStore.ts';
+import { firebaseService } from './firebaseService.ts';
+import { Vehicle } from '../../../src/types.ts';
 
 export interface AIDiagnosticResult {
   vehicleId: string;
@@ -11,8 +12,8 @@ export interface AIDiagnosticResult {
 }
 
 export class AIDiagnosticService {
-  public analyzeVehicleHealth(vehicleId: string): AIDiagnosticResult {
-    const vehicle = dbStore.getVehicleById(vehicleId);
+  public async analyzeVehicleHealth(vehicleId: string): Promise<AIDiagnosticResult> {
+    const vehicle = await firebaseService.getDocument<Vehicle>('vehicles', vehicleId);
     
     let healthScore = 95;
     const dtcCodes: string[] = [];
@@ -52,3 +53,4 @@ export class AIDiagnosticService {
 }
 
 export const aiDiagnosticService = new AIDiagnosticService();
+export default aiDiagnosticService;

@@ -3,7 +3,8 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { validationResult } from 'express-validator';
 import { config } from '../config/index.ts';
-import { dbStore, Role } from '../services/dbStore.ts';
+import { Role, User } from '../types.ts';
+import { firebaseService } from '../services/firebaseService.ts';
 import {
   generatePendingToken,
   verifyPendingToken,
@@ -19,318 +20,386 @@ const generateToken = (userId: string, role: Role): string => {
 };
 
 export const register = async (req: Request, res: Response): Promise<void> => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    res.status(400).json({ errors: errors.array(), message: errors.array()[0].msg });
-    return;
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({ errors: errors.array(), message: errors.array()[0].msg });
+      return;
+    }
+
+    const { name, email, password, phone } = req.body;
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const existingUser = await firebaseService.getUserByEmail(normalizedEmail);
+    if (existingUser) {
+      res.status(400).json({ message: 'User with this email already exists.' });
+      return;
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const userId = `usr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+
+    // Always creates CUSTOMER role for public registration
+    const newUser = await firebaseService.createDocument<User & { password?: string }>(
+      'users',
+      {
+        name: name.trim(),
+        email: normalizedEmail,
+        password: hashedPassword,
+        phone: (phone || '').trim(),
+        role: 'CUSTOMER',
+        status: 'ACTIVE'
+      },
+      userId
+    );
+
+    const token = generateToken(newUser.id, newUser.role);
+    const { password: _, ...userWithoutPassword } = newUser;
+
+    res.status(201).json({
+      message: 'User registered successfully',
+      token,
+      user: userWithoutPassword
+    });
+  } catch (error: any) {
+    console.error('Registration error:', error);
+    res.status(500).json({ message: 'Server error during registration', error: error.message });
   }
-
-  const { name, email, password, phone } = req.body;
-
-  const existingUser = dbStore.getUserByEmail(email);
-  if (existingUser) {
-    res.status(400).json({ message: 'User with this email already exists.' });
-    return;
-  }
-
-  const hashedPassword = await bcrypt.hash(password, 10);
-
-  // Always creates CUSTOMER role regardless of client input
-  const newUser = dbStore.createUser({
-    name,
-    email,
-    password: hashedPassword,
-    phone: phone || '',
-    role: 'CUSTOMER'
-  });
-
-  const token = generateToken(newUser.id, newUser.role);
-
-  const { password: _, ...userWithoutPassword } = newUser;
-  res.status(201).json({
-    message: 'User registered successfully',
-    token,
-    user: userWithoutPassword
-  });
 };
 
 export const login = async (req: Request, res: Response): Promise<void> => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    res.status(400).json({ errors: errors.array(), message: 'Invalid email or password' });
-    return;
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({ errors: errors.array(), message: 'Invalid email or password' });
+      return;
+    }
+
+    const { email, password } = req.body;
+    const normalizedEmail = (email || '').trim().toLowerCase();
+
+    const user = await firebaseService.getUserByEmail(normalizedEmail);
+    if (!user) {
+      res.status(401).json({ message: 'Invalid email or password' });
+      return;
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      res.status(401).json({ message: 'Invalid email or password' });
+      return;
+    }
+
+    // Generate 5-minute pending token and create/send 2FA OTP code
+    const pendingToken = generatePendingToken(user.id);
+    const otpResult = await createAndSendOTP(user.id, user.email);
+
+    res.status(200).json({
+      message: otpResult.devFallback
+        ? 'Verification code generated.'
+        : 'OTP sent to your email.',
+      pendingToken,
+      email: user.email,
+      devFallback: true,
+      devCode: otpResult.code
+    });
+  } catch (error: any) {
+    console.error('Login error:', error);
+    res.status(500).json({ message: 'Server error during authentication', error: error.message });
   }
-
-  const { email, password } = req.body;
-
-  const user = dbStore.getUserByEmail(email);
-  if (!user) {
-    res.status(401).json({ message: 'Invalid email or password' });
-    return;
-  }
-
-  const isPasswordValid = await bcrypt.compare(password, user.password);
-  if (!isPasswordValid) {
-    res.status(401).json({ message: 'Invalid email or password' });
-    return;
-  }
-
-  // Generate 5-minute pending token and create/send 2FA OTP code
-  const pendingToken = generatePendingToken(user.id);
-  const otpResult = await createAndSendOTP(user.id, user.email);
-
-  res.status(200).json({
-    message: otpResult.devFallback
-      ? 'Verification code generated.'
-      : 'OTP sent to your email.',
-    pendingToken,
-    email: user.email,
-    devFallback: true,
-    devCode: otpResult.code
-  });
 };
 
 export const verifyOtp = async (req: Request, res: Response): Promise<void> => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    res.status(400).json({ errors: errors.array(), message: errors.array()[0].msg });
-    return;
-  }
-
-  const authHeader = req.headers.authorization;
-  const pendingToken =
-    req.body.pendingToken || (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null);
-  const code = (req.body.code || req.body.otpCode || '').toString().trim();
-
-  if (!pendingToken) {
-    res.status(401).json({ message: 'Missing pending authentication token.' });
-    return;
-  }
-
-  if (!code) {
-    res.status(400).json({ message: '6-digit verification code is required.' });
-    return;
-  }
-
-  let userId: string;
   try {
-    const verified = verifyPendingToken(pendingToken);
-    userId = verified.userId;
-  } catch (err: any) {
-    res.status(401).json({ message: err.message || 'Pending token expired or invalid. Please log in again.' });
-    return;
-  }
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({ errors: errors.array(), message: errors.array()[0].msg });
+      return;
+    }
 
-  const result = verifyOTP(userId, code);
-  if (!result.success) {
-    res.status(401).json({
-      message: result.message || 'Invalid verification code.',
-      remainingAttempts: result.remainingAttempts
+    const authHeader = req.headers.authorization;
+    const pendingToken =
+      req.body.pendingToken || (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null);
+    const code = (req.body.code || req.body.otpCode || '').toString().trim();
+
+    if (!pendingToken) {
+      res.status(401).json({ message: 'Missing pending authentication token.' });
+      return;
+    }
+
+    if (!code) {
+      res.status(400).json({ message: '6-digit verification code is required.' });
+      return;
+    }
+
+    let userId: string;
+    try {
+      const verified = verifyPendingToken(pendingToken);
+      userId = verified.userId;
+    } catch (err: any) {
+      res.status(401).json({ message: err.message || 'Pending token expired or invalid. Please log in again.' });
+      return;
+    }
+
+    const result = verifyOTP(userId, code);
+    if (!result.success) {
+      res.status(401).json({
+        message: result.message || 'Invalid verification code.',
+        remainingAttempts: result.remainingAttempts
+      });
+      return;
+    }
+
+    const user = await firebaseService.getUserById(userId);
+    if (!user) {
+      res.status(404).json({ message: 'User account not found.' });
+      return;
+    }
+
+    // Issue real session JWT token upon 2FA verification
+    const token = generateToken(user.id, user.role);
+    const { password: _, ...userWithoutPassword } = user;
+
+    res.status(200).json({
+      message: 'Authentication successful',
+      token,
+      user: userWithoutPassword
     });
-    return;
+  } catch (error: any) {
+    console.error('Verify OTP error:', error);
+    res.status(500).json({ message: 'Server error during OTP verification', error: error.message });
   }
-
-  const user = dbStore.getUserById(userId);
-  if (!user) {
-    res.status(404).json({ message: 'User account not found.' });
-    return;
-  }
-
-  // Issue real, full 8-hour session JWT token upon 2FA verification
-  const token = generateToken(user.id, user.role);
-
-  const { password: _, ...userWithoutPassword } = user;
-  res.status(200).json({
-    message: 'Authentication successful',
-    token,
-    user: userWithoutPassword
-  });
 };
 
 export const resendOtp = async (req: Request, res: Response): Promise<void> => {
-  const authHeader = req.headers.authorization;
-  const pendingToken =
-    req.body.pendingToken || (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null);
-
-  if (!pendingToken) {
-    res.status(401).json({ message: 'Missing pending authentication token.' });
-    return;
-  }
-
-  let userId: string;
   try {
-    const verified = verifyPendingToken(pendingToken);
-    userId = verified.userId;
-  } catch (err: any) {
-    res.status(401).json({ message: err.message || 'Pending token expired or invalid. Please log in again.' });
-    return;
-  }
+    const authHeader = req.headers.authorization;
+    const pendingToken =
+      req.body.pendingToken || (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null);
 
-  const user = dbStore.getUserById(userId);
-  if (!user) {
-    res.status(404).json({ message: 'User account not found.' });
-    return;
-  }
+    if (!pendingToken) {
+      res.status(401).json({ message: 'Missing pending authentication token.' });
+      return;
+    }
 
-  const result = await resendOTP(userId, user.email);
-  if (!result.success) {
-    res.status(429).json({ message: result.message, retryAfter: result.retryAfter });
-    return;
-  }
+    let userId: string;
+    try {
+      const verified = verifyPendingToken(pendingToken);
+      userId = verified.userId;
+    } catch (err: any) {
+      res.status(401).json({ message: err.message || 'Pending token expired or invalid. Please log in again.' });
+      return;
+    }
 
-  res.status(200).json({
-    message: result.message,
-    ...(result.devFallback ? { devFallback: true, devCode: result.code } : {})
-  });
+    const user = await firebaseService.getUserById(userId);
+    if (!user) {
+      res.status(404).json({ message: 'User account not found.' });
+      return;
+    }
+
+    const result = await resendOTP(userId, user.email);
+    if (!result.success) {
+      res.status(429).json({ message: result.message, retryAfter: result.retryAfter });
+      return;
+    }
+
+    res.status(200).json({
+      message: result.message,
+      ...(result.devFallback ? { devFallback: true, devCode: result.code } : {})
+    });
+  } catch (error: any) {
+    console.error('Resend OTP error:', error);
+    res.status(500).json({ message: 'Server error during OTP resend', error: error.message });
+  }
 };
 
 export const getMe = async (req: Request, res: Response): Promise<void> => {
-  if (!req.user) {
-    res.status(401).json({ message: 'Unauthorized' });
-    return;
-  }
+  try {
+    if (!req.user) {
+      res.status(401).json({ message: 'Unauthorized' });
+      return;
+    }
 
-  const user = dbStore.getUserById(req.user.userId);
-  if (!user) {
-    res.status(404).json({ message: 'User profile not found.' });
-    return;
-  }
+    const user = await firebaseService.getUserById(req.user.userId);
+    if (!user) {
+      res.status(404).json({ message: 'User profile not found.' });
+      return;
+    }
 
-  const { password: _, ...userWithoutPassword } = user;
-  res.status(200).json({ user: userWithoutPassword });
+    const { password: _, ...userWithoutPassword } = user;
+    res.status(200).json({ user: userWithoutPassword });
+  } catch (error: any) {
+    console.error('getMe error:', error);
+    res.status(500).json({ message: 'Server error fetching profile', error: error.message });
+  }
 };
 
 export const getUsers = async (req: Request, res: Response): Promise<void> => {
-  const users = dbStore.getUsers().map(({ password, ...u }) => u);
-  res.status(200).json({ users });
+  try {
+    const users = await firebaseService.getCollection<User & { password?: string }>('users');
+    const sanitized = users.map(({ password, ...u }) => u);
+    res.status(200).json({ users: sanitized });
+  } catch (error: any) {
+    console.error('getUsers error:', error);
+    res.status(500).json({ message: 'Server error fetching users', error: error.message });
+  }
 };
 
 export const createStaff = async (req: Request, res: Response): Promise<void> => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    res.status(400).json({ errors: errors.array(), message: errors.array()[0].msg });
-    return;
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({ errors: errors.array(), message: errors.array()[0].msg });
+      return;
+    }
+
+    const { name, email, password, phone, role } = req.body;
+    const normalizedEmail = (email || '').trim().toLowerCase();
+
+    if (role !== 'ADMIN' && role !== 'MECHANIC') {
+      res.status(400).json({ message: "Staff role must be either 'ADMIN' or 'MECHANIC'." });
+      return;
+    }
+
+    const existingUser = await firebaseService.getUserByEmail(normalizedEmail);
+    if (existingUser) {
+      res.status(400).json({ message: 'User with this email already exists.' });
+      return;
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const userId = `usr_${role.toLowerCase().slice(0, 4)}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+
+    const newStaff = await firebaseService.createDocument<User & { password?: string }>(
+      'users',
+      {
+        name: name.trim(),
+        email: normalizedEmail,
+        password: hashedPassword,
+        phone: (phone || '').trim(),
+        role,
+        status: 'ACTIVE'
+      },
+      userId
+    );
+
+    const { password: _, ...userWithoutPassword } = newStaff;
+    res.status(201).json({
+      message: `Staff user created successfully with role ${role}`,
+      user: userWithoutPassword
+    });
+  } catch (error: any) {
+    console.error('createStaff error:', error);
+    res.status(500).json({ message: 'Server error creating staff account', error: error.message });
   }
-
-  const { name, email, password, phone, role } = req.body;
-
-  if (role !== 'ADMIN' && role !== 'MECHANIC') {
-    res.status(400).json({ message: "Staff role must be either 'ADMIN' or 'MECHANIC'." });
-    return;
-  }
-
-  const existingUser = dbStore.getUserByEmail(email);
-  if (existingUser) {
-    res.status(400).json({ message: 'User with this email already exists.' });
-    return;
-  }
-
-  const hashedPassword = await bcrypt.hash(password, 10);
-
-  const newStaff = dbStore.createUser({
-    name,
-    email,
-    password: hashedPassword,
-    phone: phone || '',
-    role
-  });
-
-  const { password: _, ...userWithoutPassword } = newStaff;
-  res.status(201).json({
-    message: `Staff user created successfully with role ${role}`,
-    user: userWithoutPassword
-  });
 };
 
 export const updateProfile = async (req: Request, res: Response): Promise<void> => {
-  if (!req.user) {
-    res.status(401).json({ message: 'Unauthorized' });
-    return;
-  }
-
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    res.status(400).json({ errors: errors.array(), message: errors.array()[0].msg });
-    return;
-  }
-
-  const { name, email, phone, newPassword } = req.body;
-  const userId = req.user.userId;
-
-  const existingUser = dbStore.getUserById(userId);
-  if (!existingUser) {
-    res.status(404).json({ message: 'User profile not found.' });
-    return;
-  }
-
-  // If email is changing, check uniqueness
-  if (email && email.toLowerCase() !== existingUser.email.toLowerCase()) {
-    const emailCheck = dbStore.getUserByEmail(email);
-    if (emailCheck && emailCheck.id !== userId) {
-      res.status(400).json({ message: 'Email address is already in use by another user.' });
+  try {
+    if (!req.user) {
+      res.status(401).json({ message: 'Unauthorized' });
       return;
     }
+
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({ errors: errors.array(), message: errors.array()[0].msg });
+      return;
+    }
+
+    const { name, email, phone, newPassword } = req.body;
+    const userId = req.user.userId;
+
+    const existingUser = await firebaseService.getUserById(userId);
+    if (!existingUser) {
+      res.status(404).json({ message: 'User profile not found.' });
+      return;
+    }
+
+    // If email is changing, check uniqueness
+    if (email && email.trim().toLowerCase() !== existingUser.email.toLowerCase()) {
+      const emailCheck = await firebaseService.getUserByEmail(email.trim().toLowerCase());
+      if (emailCheck && emailCheck.id !== userId) {
+        res.status(400).json({ message: 'Email address is already in use by another user.' });
+        return;
+      }
+    }
+
+    const updates: Partial<{ name: string; email: string; phone: string; password: string }> = {};
+
+    if (name) updates.name = name.trim();
+    if (email) updates.email = email.trim().toLowerCase();
+    if (phone !== undefined) updates.phone = phone.trim();
+
+    if (newPassword && newPassword.trim().length >= 6) {
+      updates.password = await bcrypt.hash(newPassword.trim(), 10);
+    }
+
+    const updatedUser = await firebaseService.updateDocument<User & { password?: string }>('users', userId, updates);
+    if (!updatedUser) {
+      res.status(500).json({ message: 'Failed to update profile.' });
+      return;
+    }
+
+    const { password: _, ...userWithoutPassword } = updatedUser;
+    res.status(200).json({
+      message: 'Profile updated successfully',
+      user: userWithoutPassword
+    });
+  } catch (error: any) {
+    console.error('updateProfile error:', error);
+    res.status(500).json({ message: 'Server error updating profile', error: error.message });
   }
-
-  const updates: Partial<{ name: string; email: string; phone: string; password: string }> = {};
-
-  if (name) updates.name = name.trim();
-  if (email) updates.email = email.trim();
-  if (phone !== undefined) updates.phone = phone.trim();
-
-  if (newPassword && newPassword.trim().length >= 6) {
-    updates.password = await bcrypt.hash(newPassword.trim(), 10);
-  }
-
-  const updatedUser = dbStore.updateUser(userId, updates);
-  if (!updatedUser) {
-    res.status(500).json({ message: 'Failed to update profile.' });
-    return;
-  }
-
-  const { password: _, ...userWithoutPassword } = updatedUser;
-  res.status(200).json({
-    message: 'Profile updated successfully',
-    user: userWithoutPassword
-  });
 };
 
 export const deleteUser = async (req: Request, res: Response): Promise<void> => {
-  if (!req.user) {
-    res.status(401).json({ message: 'Unauthorized' });
-    return;
-  }
-
-  const { id } = req.params;
-
-  // Non-admin can only delete their own account; admin can delete any user
-  if (req.user.role !== 'ADMIN' && req.user.userId !== id) {
-    res.status(403).json({ message: 'Forbidden: You do not have clearance to delete this user account.' });
-    return;
-  }
-
-  const userToDelete = dbStore.getUserById(id);
-  if (!userToDelete) {
-    res.status(404).json({ message: 'User account not found.' });
-    return;
-  }
-
-  // Prevent deleting the default primary admin if requested or prevent deleting last admin
-  if (userToDelete.role === 'ADMIN') {
-    const adminCount = dbStore.getUsers().filter((u) => u.role === 'ADMIN').length;
-    if (adminCount <= 1) {
-      res.status(400).json({ message: 'Cannot delete the sole primary Administrator account.' });
+  try {
+    if (!req.user) {
+      res.status(401).json({ message: 'Unauthorized' });
       return;
     }
-  }
 
-  const deleted = dbStore.deleteUser(id);
-  if (!deleted) {
-    res.status(500).json({ message: 'Failed to delete user.' });
-    return;
-  }
+    const { id } = req.params;
 
-  res.status(200).json({ message: `User account '${userToDelete.name}' (${userToDelete.email}) was deleted successfully.` });
+    if (req.user.role !== 'ADMIN' && req.user.userId !== id) {
+      res.status(403).json({ message: 'Forbidden: You do not have clearance to delete this user account.' });
+      return;
+    }
+
+    const userToDelete = await firebaseService.getUserById(id);
+    if (!userToDelete) {
+      res.status(404).json({ message: 'User account not found.' });
+      return;
+    }
+
+    if (userToDelete.role === 'ADMIN') {
+      const allUsers = await firebaseService.getCollection('users', [{ field: 'role', op: '==', value: 'ADMIN' }]);
+      if (allUsers.length <= 1) {
+        res.status(400).json({ message: 'Cannot delete the sole primary Administrator account.' });
+        return;
+      }
+    }
+
+    const deleted = await firebaseService.deleteDocument('users', id);
+    if (!deleted) {
+      res.status(500).json({ message: 'Failed to delete user.' });
+      return;
+    }
+
+    // Cascading deletion for user's vehicles and bookings
+    const userVehicles = await firebaseService.getVehiclesByOwner(id);
+    for (const v of userVehicles) {
+      await firebaseService.deleteDocument('vehicles', v.id);
+    }
+
+    const userBookings = await firebaseService.getBookingsByCustomer(id);
+    for (const b of userBookings) {
+      await firebaseService.deleteDocument('bookings', b.id);
+    }
+
+    res.status(200).json({ message: `User account '${userToDelete.name}' (${userToDelete.email}) was deleted successfully.` });
+  } catch (error: any) {
+    console.error('deleteUser error:', error);
+    res.status(500).json({ message: 'Server error deleting user', error: error.message });
+  }
 };
-
-

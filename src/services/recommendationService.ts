@@ -1,29 +1,18 @@
-/**
- * Smart Map-Based Service Center Recommendation Service
- * Implements Haversine distance calculations and multi-factor ranking algorithms.
- */
-
-import { ServiceCenterRecord, dbStore } from './dbStore.ts';
+import { ServiceCenter } from '../types.ts';
+import { firebaseService } from './firebaseService.ts';
 
 export interface HaversineDistanceResult {
   distanceKm: number;
   distanceFormatted: string;
 }
 
-/**
- * Calculates great-circle distance between two GPS coordinates using the Haversine formula.
- * @param lat1 Customer latitude
- * @param lon1 Customer longitude
- * @param lat2 Service center latitude
- * @param lon2 Service center longitude
- */
 export function calculateHaversineDistance(
   lat1: number,
   lon1: number,
   lat2: number,
   lon2: number
 ): number {
-  const EARTH_RADIUS_KM = 6371; // Earth's mean radius in km
+  const EARTH_RADIUS_KM = 6371;
   const toRad = (degrees: number) => (degrees * Math.PI) / 180;
 
   const dLat = toRad(lat2 - lat1);
@@ -50,7 +39,7 @@ export function formatDistance(distanceKm: number): string {
   return `${distanceKm.toFixed(1)} km`;
 }
 
-export interface RecommendationScoredCenter extends ServiceCenterRecord {
+export interface RecommendationScoredCenter extends ServiceCenter {
   distance: string;
   distanceKm: number;
   rating: number;
@@ -70,16 +59,8 @@ export interface RecommendationScoredCenter extends ServiceCenterRecord {
 }
 
 export class RecommendationService {
-  /**
-   * Evaluates and computes recommendation scores for service centers relative to customer GPS.
-   * Algorithm weights:
-   * - 40% Customer Rating (Rating / 5 * 40)
-   * - 30% Distance Proximity (Linear decay relative to search radius)
-   * - 20% Completed Services volume (Normalized up to 1000 repairs)
-   * - 10% Years of Industry Experience (Normalized up to 15 years)
-   */
   public static calculateRecommendationScore(
-    center: ServiceCenterRecord,
+    center: ServiceCenter,
     customerLat: number,
     customerLng: number,
     maxRadiusKm: number = 50
@@ -87,32 +68,25 @@ export class RecommendationService {
     const distanceKm = calculateHaversineDistance(customerLat, customerLng, center.latitude, center.longitude);
     const distanceFormatted = formatDistance(distanceKm);
 
-    // 1. Rating Score: 40%
-    const normalizedRating = Math.min(5, Math.max(0, center.averageRating));
+    const normalizedRating = Math.min(5, Math.max(0, center.averageRating || 0));
     const ratingScore = Number(((normalizedRating / 5) * 40).toFixed(2));
 
-    // 2. Distance Score: 30%
     const effectiveRadius = Math.max(10, maxRadiusKm);
     const distanceFactor = Math.max(0, 1 - distanceKm / effectiveRadius);
     const distanceScore = Number((distanceFactor * 30).toFixed(2));
 
-    // 3. Completed Services Score: 20%
-    const serviceFactor = Math.min(1, center.totalServicesCompleted / 1000);
+    const serviceFactor = Math.min(1, (center.totalServicesCompleted || 0) / 1000);
     const serviceCountScore = Number((serviceFactor * 20).toFixed(2));
 
-    // 4. Experience Score: 10%
-    const experienceFactor = Math.min(1, center.experienceYears / 15);
+    const experienceFactor = Math.min(1, (center.experienceYears || 5) / 15);
     const experienceScore = Number((experienceFactor * 10).toFixed(2));
 
-    // Verified Bonus (+2 bonus points capped at 100)
     const verifiedBonus = center.isVerified ? 2 : 0;
-
     const rawTotal = ratingScore + distanceScore + serviceCountScore + experienceScore + verifiedBonus;
     const totalScore = Number(Math.min(100, Math.max(0, rawTotal)).toFixed(1));
 
-    // Determine tailored recommendation reasons
     const reasons: string[] = [];
-    if (center.averageRating >= 4.8) {
+    if ((center.averageRating || 0) >= 4.8) {
       reasons.push('Highest customer satisfaction & stellar 5-star feedback');
     }
     if (distanceKm <= 5) {
@@ -120,10 +94,10 @@ export class RecommendationService {
     } else if (distanceKm <= 15) {
       reasons.push(`Accessible location within ${distanceFormatted}`);
     }
-    if (center.totalServicesCompleted >= 500) {
+    if ((center.totalServicesCompleted || 0) >= 500) {
       reasons.push(`High repair volume (${center.totalServicesCompleted}+ completed jobs)`);
     }
-    if (center.experienceYears >= 8) {
+    if ((center.experienceYears || 0) >= 8) {
       reasons.push(`Senior master technicians (${center.experienceYears} yrs experience)`);
     }
     if (center.isVerified) {
@@ -139,9 +113,9 @@ export class RecommendationService {
       ...center,
       distance: distanceFormatted,
       distanceKm,
-      rating: center.averageRating,
-      completedServices: center.totalServicesCompleted,
-      experience: center.experienceYears,
+      rating: center.averageRating || 0,
+      completedServices: center.totalServicesCompleted || 0,
+      experience: center.experienceYears || 5,
       recommendationScore: totalScore,
       recommendationReason: primaryReason,
       recommendationReasons: reasons.slice(0, 3),
@@ -156,30 +130,24 @@ export class RecommendationService {
     };
   }
 
-  /**
-   * Fetches nearby service centers within radius and sorts by recommendation score descending.
-   */
-  public static getRecommendations(
+  public static async getRecommendations(
     customerLat: number,
     customerLng: number,
     radiusKm: number = 50
-  ): RecommendationScoredCenter[] {
-    const allCenters = dbStore.getServiceCenters();
+  ): Promise<RecommendationScoredCenter[]> {
+    const allCenters = await firebaseService.getCollection<ServiceCenter>('serviceCenters');
 
     const scored = allCenters.map((c) =>
       this.calculateRecommendationScore(c, customerLat, customerLng, radiusKm)
     );
 
-    // Filter within radius if applicable (fallback to all if radius is 0 or no centers in strict radius)
     let filtered = radiusKm > 0 ? scored.filter((c) => c.distanceKm <= radiusKm) : scored;
     if (filtered.length === 0) {
       filtered = scored;
     }
 
-    // Sort descending by recommendation score
     filtered.sort((a, b) => b.recommendationScore - a.recommendationScore);
 
-    // Designate the #1 highest scoring center as isBestChoice
     if (filtered.length > 0) {
       filtered[0].isBestChoice = true;
     }
@@ -187,15 +155,14 @@ export class RecommendationService {
     return filtered;
   }
 
-  /**
-   * Fetches nearby service centers sorted primarily by distance.
-   */
-  public static getNearbyCenters(
+  public static async getNearbyCenters(
     customerLat: number,
     customerLng: number,
     radiusKm: number = 50
-  ): RecommendationScoredCenter[] {
-    const list = this.getRecommendations(customerLat, customerLng, radiusKm);
+  ): Promise<RecommendationScoredCenter[]> {
+    const list = await this.getRecommendations(customerLat, customerLng, radiusKm);
     return list.sort((a, b) => a.distanceKm - b.distanceKm);
   }
 }
+
+export default RecommendationService;

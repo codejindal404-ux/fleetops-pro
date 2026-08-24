@@ -374,8 +374,6 @@ interface DatabaseSchema {
   sparePartsRequests?: SparePartsRequestRecord[];
 }
 
-const DB_FILE = path.join(process.cwd(), 'dev.db.json');
-
 class DatabaseStore {
   private data: DatabaseSchema = {
     users: [],
@@ -401,57 +399,15 @@ class DatabaseStore {
   };
 
   constructor() {
-    this.init();
+    this.seedSystemUsers();
   }
 
   private init() {
-    if (fs.existsSync(DB_FILE)) {
-      try {
-        const raw = fs.readFileSync(DB_FILE, 'utf-8');
-        this.data = JSON.parse(raw);
-        if (!this.data.users) this.data.users = [];
-        if (!this.data.vehicles) this.data.vehicles = [];
-        if (!this.data.bookings) this.data.bookings = [];
-        if (!this.data.repairLogs) this.data.repairLogs = [];
-        if (!this.data.invoices) this.data.invoices = [];
-        if (!this.data.feedbacks) this.data.feedbacks = [];
-        if (!this.data.auditLogs) this.data.auditLogs = [];
-        if (!this.data.marketplaceListings) this.data.marketplaceListings = [];
-        if (!this.data.marketplaceInquiries) this.data.marketplaceInquiries = [];
-        if (!this.data.serviceCenters) this.data.serviceCenters = [];
-        if (!this.data.notifications) this.data.notifications = [];
-        if (!this.data.chatMessages) this.data.chatMessages = [];
-        if (!this.data.paymentTransactions) this.data.paymentTransactions = [];
-        if (!this.data.loyaltyRecords) this.data.loyaltyRecords = [];
-        if (!this.data.customerPreferences) this.data.customerPreferences = [];
-        if (!this.data.servicesInventory) this.data.servicesInventory = [];
-        if (!this.data.diagnostics) this.data.diagnostics = [];
-        if (!this.data.inspections) this.data.inspections = [];
-        if (!this.data.repairImages) this.data.repairImages = [];
-        if (!this.data.sparePartsRequests) this.data.sparePartsRequests = [];
-
-        if (this.data.users.length === 0) {
-          this.seedSystemUsers();
-        } else {
-          // Ensure standard role accounts exist for testing/workflow operation
-          this.ensureStandardAccounts();
-        }
-        return;
-      } catch (err) {
-        console.error('Failed to parse database file, re-initializing...', err);
-      }
-    }
     this.seedSystemUsers();
   }
 
   private save() {
-    try {
-      const tempPath = `${DB_FILE}.tmp`;
-      fs.writeFileSync(tempPath, JSON.stringify(this.data, null, 2), 'utf-8');
-      fs.renameSync(tempPath, DB_FILE);
-    } catch (err) {
-      console.error('Failed to save DB file atomically:', err);
-    }
+    // In-memory operation - file persistence to dev.db.json removed in favor of Firestore
   }
 
   public clearAllData() {

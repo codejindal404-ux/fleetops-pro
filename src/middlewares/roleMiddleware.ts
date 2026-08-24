@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { Role } from '../services/dbStore.ts';
+import { Role } from '../types.ts';
 import { Permission, hasPermission } from '../permissions/rolePermissions.ts';
 
 export const restrictTo = (...roles: Role[]) => {

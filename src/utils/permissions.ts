@@ -1,4 +1,4 @@
-import { Role, BookingStatus } from '../services/dbStore.ts';
+import { Role, BookingStatus } from '../types.ts';
 
 export type Permission =
   // Admin permissions

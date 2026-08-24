@@ -1,6 +1,6 @@
-import { dbStore, VehicleRecord, UserRecord } from './dbStore.ts';
+import { Vehicle, ServiceReminderEvaluation } from '../types.ts';
+import { firebaseService } from './firebaseService.ts';
 import { notificationService } from './notificationService.ts';
-import { ServiceReminderEvaluation } from '../types.ts';
 
 class ServiceReminderService {
   private timer: NodeJS.Timeout | null = null;
@@ -8,14 +8,13 @@ class ServiceReminderService {
   /**
    * Evaluate maintenance status for a vehicle and calculate time / mileage metrics
    */
-  public evaluateVehicle(vehicle: VehicleRecord, options: { force?: boolean } = {}): ServiceReminderEvaluation {
+  public evaluateVehicle(vehicle: Vehicle, options: { force?: boolean } = {}): ServiceReminderEvaluation {
     const now = new Date();
     const serviceIntervalMonths = vehicle.serviceIntervalMonths || 6;
     const serviceIntervalMileage = vehicle.serviceIntervalMileage || 5000;
     const avgMonthlyMileage = vehicle.avgMonthlyMileage || 1000;
     const currentMileage = vehicle.mileage || 0;
 
-    // Resolve or calculate Next Service Due Date
     let nextDueDate: Date;
     if (vehicle.nextServiceDueDate) {
       nextDueDate = new Date(vehicle.nextServiceDueDate);
@@ -33,12 +32,10 @@ class ServiceReminderService {
     const diffMs = nextDueDate.getTime() - now.getTime();
     const daysRemaining = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
 
-    // Resolve or calculate Next Service Due Mileage
     const lastServiceMileage = vehicle.lastServiceMileage ?? Math.max(0, currentMileage - Math.floor(serviceIntervalMileage * 0.7));
     const nextMaintenanceMileage = vehicle.nextMaintenanceMileage || (lastServiceMileage + serviceIntervalMileage);
     const milesRemaining = nextMaintenanceMileage - currentMileage;
 
-    // Estimate days to reach mileage threshold based on average monthly driving
     const milesPerDay = Math.max(1, avgMonthlyMileage / 30);
     const projectedDaysToMileage = Math.round(milesRemaining / milesPerDay);
 
@@ -50,7 +47,6 @@ class ServiceReminderService {
     let title = 'Vehicle Maintenance Reminder';
     let message = '';
 
-    // Condition 1: Overdue by time or mileage
     if (daysRemaining < 0 || milesRemaining < 0) {
       isDue = true;
       status = 'OVERDUE';
@@ -65,17 +61,13 @@ class ServiceReminderService {
       } else {
         message = `Your ${vehicle.brand} ${vehicle.model} (${vehicle.registrationNumber}) exceeded its maintenance interval by ${overMiles.toLocaleString()} miles (Current: ${currentMileage.toLocaleString()} mi). Book your service now.`;
       }
-    }
-    // Condition 2: 30-day time window
-    else if (daysRemaining <= 30) {
+    } else if (daysRemaining <= 30) {
       isDue = true;
       status = 'DUE_SOON';
       reason = 'TIME_30_DAYS';
       title = `30-Day Service Reminder: ${vehicle.brand} ${vehicle.model}`;
       message = `Upcoming Scheduled Maintenance: Your ${vehicle.brand} ${vehicle.model} (${vehicle.registrationNumber}) is due for service in ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} on ${nextDueDateStr} (Current odometer: ${currentMileage.toLocaleString()} mi). Reserve a maintenance bay in advance.`;
-    }
-    // Condition 3: Mileage milestone window (within 500 miles or projected to hit milestone within 30 days)
-    else if (milesRemaining <= 500 || projectedDaysToMileage <= 30) {
+    } else if (milesRemaining <= 500 || projectedDaysToMileage <= 30) {
       isDue = true;
       status = 'DUE_SOON';
       reason = 'MILEAGE_THRESHOLD';
@@ -105,11 +97,10 @@ class ServiceReminderService {
   /**
    * Evaluates a vehicle and dispatches in-app and real-time Socket.IO notification if due
    */
-  public async evaluateAndNotify(vehicle: VehicleRecord, options: { force?: boolean } = {}): Promise<ServiceReminderEvaluation> {
+  public async evaluateAndNotify(vehicle: Vehicle, options: { force?: boolean } = {}): Promise<ServiceReminderEvaluation> {
     const evaluation = this.evaluateVehicle(vehicle, options);
 
-    // Update vehicle's persistent reminder status
-    dbStore.updateVehicle(vehicle.id, {
+    await firebaseService.updateDocument('vehicles', vehicle.id, {
       reminderStatus: evaluation.status,
       nextServiceDueDate: evaluation.nextServiceDueDate,
       nextMaintenanceMileage: evaluation.nextMaintenanceMileage
@@ -123,7 +114,6 @@ class ServiceReminderService {
       return { ...evaluation, notificationSent: false };
     }
 
-    // Rate-limiting: prevent sending identical reminder within 7 days unless forced
     if (vehicle.lastReminderSentAt && !options.force) {
       const lastSent = new Date(vehicle.lastReminderSentAt).getTime();
       const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
@@ -132,7 +122,6 @@ class ServiceReminderService {
       }
     }
 
-    // Dispatch real-time notification
     try {
       const notifType = evaluation.reason === 'OVERDUE' ? 'MAINTENANCE_DUE' : 'SERVICE_REMINDER';
       await notificationService.createNotification({
@@ -155,8 +144,7 @@ class ServiceReminderService {
         }
       });
 
-      // Update lastReminderSentAt on vehicle
-      dbStore.updateVehicle(vehicle.id, {
+      await firebaseService.updateDocument('vehicles', vehicle.id, {
         lastReminderSentAt: new Date().toISOString()
       });
 
@@ -168,10 +156,10 @@ class ServiceReminderService {
   }
 
   /**
-   * Process all vehicles across the entire system
+   * Process all vehicles across Firestore
    */
   public async checkAllVehicles(options: { force?: boolean } = {}) {
-    const vehicles = dbStore.getVehicles();
+    const vehicles = await firebaseService.getCollection<Vehicle>('vehicles');
     const results: ServiceReminderEvaluation[] = [];
     let sentCount = 0;
 
@@ -198,14 +186,12 @@ class ServiceReminderService {
       clearInterval(this.timer);
     }
 
-    // Run initial check on server boot after a short delay (10s)
     setTimeout(() => {
       this.checkAllVehicles().catch((err) => {
         console.error('Initial service reminder check error:', err);
       });
     }, 10000);
 
-    // Recurring interval
     this.timer = setInterval(() => {
       this.checkAllVehicles().catch((err) => {
         console.error('Periodic service reminder check error:', err);
@@ -224,3 +210,4 @@ class ServiceReminderService {
 }
 
 export const serviceReminderService = new ServiceReminderService();
+export default serviceReminderService;
