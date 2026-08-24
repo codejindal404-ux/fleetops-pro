@@ -29,6 +29,7 @@ import {
   DollarSign
 } from 'lucide-react';
 import { MechanicPerformanceMetrics } from '../../types.ts';
+import { MechanicPerformanceCard } from './MechanicPerformanceCard.tsx';
 
 interface MechanicAnalyticsViewProps {
   metrics: MechanicPerformanceMetrics | null;
@@ -69,6 +70,8 @@ export const MechanicAnalyticsView: React.FC<MechanicAnalyticsViewProps> = ({ me
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
+      {/* Mechanic Performance Scorecard */}
+      <MechanicPerformanceCard metrics={metrics} />
       {/* Top Banner */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>

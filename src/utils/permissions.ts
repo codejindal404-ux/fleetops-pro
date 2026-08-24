@@ -80,10 +80,12 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
 
 // Mechanic allowed status values
 export const MECHANIC_ALLOWED_STATUSES: BookingStatus[] = [
+  'PENDING',
   'APPROVED',
   'ASSIGNED',
   'INSPECTION',
   'REPAIRING',
+  'TESTING',
   'QUALITY_CHECK',
   'COMPLETED'
 ];

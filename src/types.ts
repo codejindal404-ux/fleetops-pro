@@ -6,6 +6,7 @@ export type BookingStatus =
   | 'ASSIGNED'
   | 'INSPECTION'
   | 'REPAIRING'
+  | 'TESTING'
   | 'QUALITY_CHECK'
   | 'COMPLETED'
   | 'CANCELLED';

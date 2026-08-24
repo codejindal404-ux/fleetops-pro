@@ -1,12 +1,13 @@
 // Status transition validator for bookings and work orders
 
 export const ALLOWED_STATUS_TRANSITIONS: Record<string, string[]> = {
-  PENDING: ['APPROVED', 'ASSIGNED', 'CANCELLED'],
+  PENDING: ['APPROVED', 'ASSIGNED', 'INSPECTION', 'CANCELLED'],
   APPROVED: ['ASSIGNED', 'INSPECTION', 'REPAIRING', 'CANCELLED'],
   ASSIGNED: ['INSPECTION', 'REPAIRING', 'CANCELLED'],
-  INSPECTION: ['REPAIRING', 'QUALITY_CHECK', 'CANCELLED'],
-  REPAIRING: ['QUALITY_CHECK', 'COMPLETED', 'INSPECTION', 'CANCELLED'],
-  QUALITY_CHECK: ['COMPLETED', 'REPAIRING', 'CANCELLED'],
+  INSPECTION: ['REPAIRING', 'TESTING', 'QUALITY_CHECK', 'CANCELLED'],
+  REPAIRING: ['TESTING', 'QUALITY_CHECK', 'COMPLETED', 'INSPECTION', 'CANCELLED'],
+  TESTING: ['COMPLETED', 'REPAIRING', 'QUALITY_CHECK', 'CANCELLED'],
+  QUALITY_CHECK: ['COMPLETED', 'TESTING', 'REPAIRING', 'CANCELLED'],
   COMPLETED: [],
   CANCELLED: []
 };
@@ -34,4 +35,3 @@ export function validateBookingStatusTransition(
     reason: `Invalid status transition from ${currentStatus} to ${nextStatus}. Allowed: ${allowed.join(', ') || 'None'}`
   };
 }
-
