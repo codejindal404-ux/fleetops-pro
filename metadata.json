@@ -1,0 +1,8 @@
+{
+  "name": "FleetOps Pro",
+  "description": "Enterprise-grade Automotive Fleet Management Control Center featuring live bay telemetry, executive business analytics, inventory management, AI-driven insights, multi-role RBAC, booking lifecycle operations, mechanic dispatch, and audit logging.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

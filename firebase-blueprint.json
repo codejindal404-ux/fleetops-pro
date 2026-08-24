@@ -1,0 +1,79 @@
+{
+  "entities": {
+    "users": {
+      "title": "Users",
+      "description": "User accounts and authentication profiles",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string" },
+        "phone": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["email", "name", "role"]
+    },
+    "vehicles": {
+      "title": "Vehicles",
+      "description": "Customer fleet vehicles catalog",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "registrationNumber": { "type": "string" },
+        "brand": { "type": "string" },
+        "model": { "type": "string" },
+        "year": { "type": "integer" },
+        "vehicleType": { "type": "string" }
+      },
+      "required": ["registrationNumber", "brand", "model"]
+    },
+    "bookings": {
+      "title": "Bookings",
+      "description": "Service and repair bookings",
+      "type": "object",
+      "properties": {
+        "vehicleId": { "type": "string" },
+        "customerId": { "type": "string" },
+        "mechanicId": { "type": "string" },
+        "serviceType": { "type": "string" },
+        "preferredDate": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["vehicleId", "customerId", "serviceType", "status"]
+    },
+    "repairLogs": {
+      "title": "Repair Logs",
+      "description": "Mechanic notes and status updates for bookings",
+      "type": "object",
+      "properties": {
+        "bookingId": { "type": "string" },
+        "note": { "type": "string" },
+        "updatedBy": { "type": "string" },
+        "createdAt": { "type": "string" }
+      }
+    },
+    "invoices": {
+      "title": "Invoices",
+      "description": "Invoices and billing records",
+      "type": "object",
+      "properties": {
+        "bookingId": { "type": "string" },
+        "serviceCharges": { "type": "number" },
+        "partsCost": { "type": "number" },
+        "amount": { "type": "number" },
+        "status": { "type": "string" }
+      }
+    },
+    "feedbacks": {
+      "title": "Feedbacks",
+      "description": "Customer reviews and ratings",
+      "type": "object",
+      "properties": {
+        "bookingId": { "type": "string" },
+        "customerId": { "type": "string" },
+        "rating": { "type": "integer" },
+        "comment": { "type": "string" }
+      }
+    }
+  }
+}
