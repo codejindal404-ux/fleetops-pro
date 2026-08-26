@@ -95,13 +95,9 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     const otpResult = await createAndSendOTP(user.id, user.email);
 
     res.status(200).json({
-      message: otpResult.devFallback
-        ? 'Verification code generated.'
-        : 'OTP sent to your email.',
+      message: 'A verification code has been sent. Please check your email or server console.',
       pendingToken,
-      email: user.email,
-      devFallback: true,
-      devCode: otpResult.code
+      email: user.email
     });
   } catch (error: any) {
     console.error('Login error:', error);
@@ -204,8 +200,7 @@ export const resendOtp = async (req: Request, res: Response): Promise<void> => {
     }
 
     res.status(200).json({
-      message: result.message,
-      ...(result.devFallback ? { devFallback: true, devCode: result.code } : {})
+      message: 'A fresh verification code has been sent. Please check your email or server console.'
     });
   } catch (error: any) {
     console.error('Resend OTP error:', error);

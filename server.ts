@@ -97,7 +97,7 @@ async function startServer() {
   app.use(globalErrorHandler);
 
   httpServer.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 FleetOps Pro Backend + Socket.IO running on http://0.0.0.0:${PORT}`);
+    console.log(`🚀 FleetOps Pro Backend + Socket.IO running on http://localhost:${PORT}`);
   });
 }
 
