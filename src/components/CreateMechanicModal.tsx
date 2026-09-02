@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Wrench, X, Check, ShieldCheck, Mail, Lock, User, Phone } from 'lucide-react';
+import { Wrench, X, Check, ShieldCheck, Mail, Lock, User, Phone, Eye, EyeOff } from 'lucide-react';
 import { apiClient } from '../services/apiClient.ts';
 
 interface CreateMechanicModalProps {
@@ -19,6 +19,7 @@ export const CreateMechanicModal: React.FC<CreateMechanicModalProps> = ({
     password: '',
     phone: ''
   });
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -108,16 +109,24 @@ export const CreateMechanicModal: React.FC<CreateMechanicModalProps> = ({
           <div>
             <label className="block text-xs font-mono text-slate-400 mb-1">Initial Password *</label>
             <div className="relative">
-              <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+              <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 required
                 minLength={6}
-                placeholder="••••••••"
+                placeholder="Enter initial password"
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-9 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-amber-400 p-1 cursor-pointer"
+              >
+                {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              </button>
             </div>
           </div>
 

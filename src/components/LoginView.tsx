@@ -176,7 +176,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
   onNavigate,
   initialPendingAuth
 }) => {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [mode, setMode] = useState<'login' | 'register' | 'forgot-password'>('login');
 
   // Form states
   const [email, setEmail] = useState('');
@@ -187,6 +187,27 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showRegPassword, setShowRegPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  // Forgot password states
+  const [forgotStep, setForgotStep] = useState<1 | 2 | 3>(1);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotEmailTouched, setForgotEmailTouched] = useState(false);
+  const [resetToken, setResetToken] = useState<string | null>(null);
+  const [resetIsDevFallback, setResetIsDevFallback] = useState(false);
+  const [resetDevCode, setResetDevCode] = useState<string | null>(null);
+  const [resetOtpDigits, setResetOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotError, setForgotError] = useState<string | null>(null);
+  const [forgotSuccessMsg, setForgotSuccessMsg] = useState<string | null>(null);
+  const [resetTimeRemaining, setResetTimeRemaining] = useState<number>(600);
+  const [resetResendCooldown, setResetResendCooldown] = useState<number>(60);
+  const [resetResendLoading, setResetResendLoading] = useState<boolean>(false);
 
   // UI status
   const [loading, setLoading] = useState(false);
@@ -229,6 +250,15 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const [resendLoading, setResendLoading] = useState<boolean>(false);
 
   const otpInputRefs = [
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null)
+  ];
+
+  const resetOtpInputRefs = [
     useRef<HTMLInputElement>(null),
     useRef<HTMLInputElement>(null),
     useRef<HTMLInputElement>(null),
@@ -500,6 +530,168 @@ export const LoginView: React.FC<LoginViewProps> = ({
       setOtpError(err.message || 'Failed to resend verification code.');
     } finally {
       setResendLoading(false);
+    }
+  };
+
+  // Reset Password Expiry & Resend Timers
+  useEffect(() => {
+    if (mode !== 'forgot-password' || !resetToken) return;
+
+    const interval = setInterval(() => {
+      setResetTimeRemaining((prev) => (prev > 0 ? prev - 1 : 0));
+      setResetResendCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [mode, resetToken]);
+
+  // Auto-focus first box when Reset OTP screen mounts
+  useEffect(() => {
+    if (mode === 'forgot-password' && forgotStep === 2) {
+      setTimeout(() => resetOtpInputRefs[0].current?.focus(), 100);
+    }
+  }, [mode, forgotStep]);
+
+  // Handle Request Password Reset Code
+  const handleRequestResetCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotError(null);
+    setForgotEmailTouched(true);
+
+    const cleanEmail = forgotEmail.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setForgotError('Please enter a valid email address.');
+      return;
+    }
+
+    setForgotLoading(true);
+
+    try {
+      const res = await apiClient.forgotPassword(cleanEmail);
+      setResetToken(res.resetToken);
+      setResetIsDevFallback(Boolean(res.devFallback));
+      if (res.devCode) {
+        setResetDevCode(res.devCode);
+        const codeStr = String(res.devCode);
+        if (codeStr.length === 6) {
+          setResetOtpDigits(codeStr.split(''));
+        }
+      }
+      setResetTimeRemaining(600);
+      setResetResendCooldown(60);
+      setForgotStep(2);
+    } catch (err: any) {
+      setForgotError(err.message || 'Failed to send reset code. Please verify the email and try again.');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  // Handle Reset OTP Digit Box Inputs
+  const handleResetOtpDigitChange = (index: number, value: string) => {
+    if (value.length > 1) {
+      const cleanPasted = value.replace(/\D/g, '').slice(0, 6);
+      if (cleanPasted.length > 0) {
+        const newDigits = ['', '', '', '', '', ''];
+        for (let i = 0; i < cleanPasted.length; i++) {
+          newDigits[i] = cleanPasted[i];
+        }
+        setResetOtpDigits(newDigits);
+        resetOtpInputRefs[Math.min(cleanPasted.length, 5)].current?.focus();
+      }
+      return;
+    }
+
+    const cleanChar = value.replace(/\D/g, '');
+    const newDigits = [...resetOtpDigits];
+    newDigits[index] = cleanChar;
+    setResetOtpDigits(newDigits);
+
+    if (cleanChar && index < 5) {
+      resetOtpInputRefs[index + 1].current?.focus();
+    }
+  };
+
+  const handleResetOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace' && !resetOtpDigits[index] && index > 0) {
+      resetOtpInputRefs[index - 1].current?.focus();
+    }
+  };
+
+  // Handle Reset Password Submission
+  const handleResetPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotError(null);
+
+    const finalCode = resetOtpDigits.join('');
+    if (finalCode.length < 6) {
+      setForgotError('Please enter all 6 digits of the password reset code.');
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setForgotError('New password must be at least 6 characters long.');
+      return;
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      setForgotError('Passwords do not match. Please verify and try again.');
+      return;
+    }
+
+    if (!resetToken) {
+      setForgotError('Missing password reset session. Please request a new code.');
+      return;
+    }
+
+    setForgotLoading(true);
+
+    try {
+      const res = await apiClient.resetPassword(resetToken, finalCode, newPassword);
+      setForgotSuccessMsg(res.message || 'Password reset successfully! Redirecting to login...');
+      setForgotStep(3);
+
+      setTimeout(() => {
+        setEmail(forgotEmail);
+        setPassword('');
+        setMode('login');
+        setForgotStep(1);
+        setForgotSuccessMsg(null);
+        setResetToken(null);
+        setNewPassword('');
+        setConfirmNewPassword('');
+        setResetOtpDigits(['', '', '', '', '', '']);
+      }, 2200);
+    } catch (err: any) {
+      setForgotError(err.message || 'Failed to reset password. Code may be invalid or expired.');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  // Handle Resend Reset Code
+  const handleResendResetCode = async () => {
+    if (!resetToken || resetResendCooldown > 0) return;
+
+    setResetResendLoading(true);
+    setForgotError(null);
+
+    try {
+      const res = await apiClient.resendResetOtp(resetToken);
+      if (res.devCode) {
+        setResetDevCode(res.devCode);
+        const codeStr = String(res.devCode);
+        if (codeStr.length === 6) {
+          setResetOtpDigits(codeStr.split(''));
+        }
+      }
+      setResetTimeRemaining(600);
+      setResetResendCooldown(60);
+      resetOtpInputRefs[0].current?.focus();
+    } catch (err: any) {
+      setForgotError(err.message || 'Failed to resend reset code.');
+    } finally {
+      setResetResendLoading(false);
     }
   };
 
@@ -930,14 +1122,18 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-800">
                   <div>
                     <h2 className="text-xl font-bold text-white tracking-tight font-['Oswald'] uppercase">
-                      {isStaff
+                      {mode === 'forgot-password'
+                        ? 'Reset Account Password'
+                        : isStaff
                         ? 'Staff Terminal Access'
                         : mode === 'login'
                         ? 'Customer Portal Access'
                         : 'Register Vehicle Owner'}
                     </h2>
                     <p className="text-xs text-slate-400 mt-0.5">
-                      {isStaff
+                      {mode === 'forgot-password'
+                        ? 'Recover access to your FleetOps Pro account with a secure verification code.'
+                        : isStaff
                         ? 'Enter your assigned staff credentials to access repair queues and administration.'
                         : mode === 'login'
                         ? 'Authenticate to enter your fleet control portal'
@@ -952,8 +1148,9 @@ export const LoginView: React.FC<LoginViewProps> = ({
                         onClick={() => {
                           setMode('login');
                           setError(null);
+                          setForgotError(null);
                         }}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                           mode === 'login'
                             ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/20'
                             : 'text-slate-400 hover:text-white'
@@ -966,8 +1163,9 @@ export const LoginView: React.FC<LoginViewProps> = ({
                         onClick={() => {
                           setMode('register');
                           setError(null);
+                          setForgotError(null);
                         }}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                           mode === 'register'
                             ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/20'
                             : 'text-slate-400 hover:text-white'
@@ -984,18 +1182,284 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 </div>
 
                 {/* Main Error Banner */}
-                {error && (
+                {(error || forgotError) && (
                   <div role="alert" className="mb-5 p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300 flex items-start gap-2.5 animate-fadeIn">
                     <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
                     <div className="flex-1">
-                      <p className="font-bold text-rose-200">Authentication Failure</p>
-                      <p className="mt-0.5">{error}</p>
+                      <p className="font-bold text-rose-200">
+                        {mode === 'forgot-password' ? 'Password Reset Notice' : 'Authentication Failure'}
+                      </p>
+                      <p className="mt-0.5">{error || forgotError}</p>
                     </div>
                   </div>
                 )}
 
-                {/* Login Form */}
-                {mode === 'login' || isStaff ? (
+                {/* Success Banner */}
+                {forgotSuccessMsg && (
+                  <div className="mb-5 p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-xs text-emerald-300 flex items-center gap-2.5 animate-fadeIn">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>{forgotSuccessMsg}</span>
+                  </div>
+                )}
+
+                {/* Forgot Password Flow */}
+                {mode === 'forgot-password' ? (
+                  forgotStep === 1 ? (
+                    /* Step 1: Enter Email */
+                    <form onSubmit={handleRequestResetCode} className="space-y-4" noValidate>
+                      <div>
+                        <label htmlFor="forgot-email" className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wide font-mono">
+                          Account Email Address
+                        </label>
+                        <div className="relative">
+                          <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <input
+                            id="forgot-email"
+                            required
+                            type="email"
+                            value={forgotEmail}
+                            onChange={(e) => {
+                              setForgotEmail(e.target.value);
+                              if (!forgotEmailTouched) setForgotEmailTouched(true);
+                            }}
+                            placeholder="Enter your email"
+                            className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/30 transition-all font-mono"
+                          />
+                        </div>
+                        {forgotEmailTouched && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(forgotEmail.trim()) && forgotEmail.length > 0 && (
+                          <p className="text-[11px] text-rose-400 mt-1 flex items-center gap-1">
+                            <AlertCircle className="w-3 h-3" /> Please enter a valid email address format.
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-start gap-2 text-xs text-amber-300">
+                        <Key className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                        <span>We will send a 6-digit one-time password (OTP) to your email to verify your identity.</span>
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={forgotLoading}
+                        className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 disabled:opacity-60 text-slate-950 font-bold text-xs py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 font-['Oswald'] uppercase tracking-wider mt-2 active:scale-98 cursor-pointer"
+                      >
+                        {forgotLoading ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
+                            <span>SENDING RESET CODE...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>SEND RESET CODE</span>
+                            <ArrowRight className="w-4 h-4" />
+                          </>
+                        )}
+                      </button>
+
+                      <div className="text-center pt-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMode('login');
+                            setForgotError(null);
+                          }}
+                          className="text-xs text-slate-400 hover:text-amber-400 transition-colors inline-flex items-center gap-1.5 font-mono cursor-pointer"
+                        >
+                          <ArrowLeft className="w-3.5 h-3.5" />
+                          <span>Back to Sign In</span>
+                        </button>
+                      </div>
+                    </form>
+                  ) : forgotStep === 2 ? (
+                    /* Step 2: Enter OTP & New Password */
+                    <form onSubmit={handleResetPasswordSubmit} className="space-y-4" noValidate>
+                      {/* On-Screen Dev Code Banner if available */}
+                      {resetDevCode && (
+                        <div className="p-3.5 bg-gradient-to-r from-amber-500/20 via-amber-500/15 to-amber-600/20 border-2 border-amber-500/60 rounded-xl shadow-lg shadow-amber-500/10 mb-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <div>
+                              <span className="text-[10px] text-amber-400 font-mono font-bold uppercase block">RESET OTP CODE (ON-SCREEN)</span>
+                              <span className="text-xl font-mono font-black text-amber-300 tracking-[0.2em]">{resetDevCode}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const digits = resetDevCode.split('');
+                                setResetOtpDigits(digits);
+                              }}
+                              className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg transition-all font-['Oswald'] uppercase cursor-pointer"
+                            >
+                              Auto-Fill
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-2 uppercase tracking-wide font-mono text-center">
+                          6-Digit Password Reset Code
+                        </label>
+                        <div className="grid grid-cols-6 gap-2 my-2">
+                          {resetOtpDigits.map((digit, index) => (
+                            <input
+                              key={index}
+                              ref={resetOtpInputRefs[index]}
+                              type="text"
+                              inputMode="numeric"
+                              maxLength={6}
+                              value={digit}
+                              onChange={(e) => handleResetOtpDigitChange(index, e.target.value)}
+                              onKeyDown={(e) => handleResetOtpKeyDown(index, e)}
+                              className="w-full h-11 text-center bg-slate-950 border border-slate-800 rounded-xl text-base font-bold text-amber-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/40 transition-all font-mono"
+                            />
+                          ))}
+                        </div>
+
+                        {/* Expiry & Resend Controls */}
+                        <div className="flex items-center justify-between text-xs font-mono bg-slate-950 p-2.5 rounded-xl border border-slate-800/80 mt-2">
+                          <div className="flex items-center gap-1.5 text-slate-400 text-[11px]">
+                            <Clock className="w-3.5 h-3.5 text-amber-500" />
+                            <span>Expires:</span>
+                            <span className={`font-bold ${resetTimeRemaining < 60 ? 'text-rose-400 animate-pulse' : 'text-amber-400'}`}>
+                              {formatTime(resetTimeRemaining)}
+                            </span>
+                          </div>
+
+                          <button
+                            type="button"
+                            disabled={resetResendCooldown > 0 || resetResendLoading}
+                            onClick={handleResendResetCode}
+                            className="text-amber-500 hover:text-amber-400 disabled:text-slate-600 disabled:cursor-not-allowed font-semibold flex items-center gap-1 transition-colors text-[11px] cursor-pointer"
+                          >
+                            {resetResendLoading ? (
+                              <>
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                                <span>Sending...</span>
+                              </>
+                            ) : resetResendCooldown > 0 ? (
+                              <span>Resend in {resetResendCooldown}s</span>
+                            ) : (
+                              <>
+                                <RotateCcw className="w-3 h-3" />
+                                <span>Resend Code</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label htmlFor="new-pass" className="block text-xs font-semibold text-slate-300 mb-1 uppercase tracking-wide font-mono">
+                          New Password
+                        </label>
+                        <div className="relative">
+                          <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <input
+                            id="new-pass"
+                            required
+                            type={showNewPassword ? 'text' : 'password'}
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            placeholder="Enter your password"
+                            className="w-full pl-10 pr-10 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/30 transition-all font-mono"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowNewPassword(!showNewPassword)}
+                            aria-label={showNewPassword ? 'Hide password' : 'Show password'}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-amber-400 p-1.5 rounded-lg hover:bg-slate-800/80 cursor-pointer"
+                          >
+                            {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label htmlFor="confirm-new-pass" className="block text-xs font-semibold text-slate-300 mb-1 uppercase tracking-wide font-mono">
+                          Confirm New Password
+                        </label>
+                        <div className="relative">
+                          <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <input
+                            id="confirm-new-pass"
+                            required
+                            type={showConfirmNewPassword ? 'text' : 'password'}
+                            value={confirmNewPassword}
+                            onChange={(e) => setConfirmNewPassword(e.target.value)}
+                            placeholder="Confirm password"
+                            className="w-full pl-10 pr-10 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/30 transition-all font-mono"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowConfirmNewPassword(!showConfirmNewPassword)}
+                            aria-label={showConfirmNewPassword ? 'Hide password' : 'Show password'}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-amber-400 p-1.5 rounded-lg hover:bg-slate-800/80 cursor-pointer"
+                          >
+                            {showConfirmNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={forgotLoading || resetOtpDigits.some((d) => d === '')}
+                        className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 disabled:opacity-50 text-slate-950 font-bold text-xs py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 font-['Oswald'] uppercase tracking-wider mt-2 active:scale-98 cursor-pointer"
+                      >
+                        {forgotLoading ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
+                            <span>UPDATING PASSWORD...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>RESET PASSWORD & SIGN IN</span>
+                            <CheckCircle2 className="w-4 h-4" />
+                          </>
+                        )}
+                      </button>
+
+                      <div className="flex items-center justify-between text-xs pt-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setForgotStep(1);
+                            setForgotError(null);
+                          }}
+                          className="text-slate-400 hover:text-amber-400 transition-colors inline-flex items-center gap-1 font-mono cursor-pointer text-[11px]"
+                        >
+                          <ArrowLeft className="w-3.5 h-3.5" />
+                          <span>Change Email</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMode('login');
+                            setForgotError(null);
+                          }}
+                          className="text-slate-400 hover:text-amber-400 transition-colors font-mono cursor-pointer text-[11px]"
+                        >
+                          Cancel & Sign In
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    /* Step 3: Success Animation */
+                    <div className="py-8 text-center space-y-4 animate-fadeIn">
+                      <div className="w-14 h-14 bg-emerald-500/20 border-2 border-emerald-500/40 rounded-full flex items-center justify-center mx-auto text-emerald-400 shadow-lg shadow-emerald-500/20">
+                        <CheckCircle2 className="w-8 h-8" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-bold text-white font-['Oswald'] uppercase">Password Reset Successfully</h3>
+                        <p className="text-xs text-slate-400 mt-1">Your password has been updated. Redirecting to sign in...</p>
+                      </div>
+                      <div className="flex items-center justify-center gap-2 text-xs text-amber-400 font-mono">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Signing in with new credentials...</span>
+                      </div>
+                    </div>
+                  )
+                ) : mode === 'login' || isStaff ? (
+                  /* Login Form */
                   <form onSubmit={handleLoginSubmit} className="space-y-4" noValidate>
                     {/* Quick Fill Default Admin Credentials */}
                     <div className="p-3 bg-slate-950 rounded-xl border border-slate-800/80 mb-3 font-mono text-xs">
@@ -1012,7 +1476,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                             setEmail('admin@fleetops.com');
                             setPassword('Password123!');
                           }}
-                          className="px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-lg text-[11px] font-semibold transition-colors flex items-center gap-1"
+                          className="px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-lg text-[11px] font-semibold transition-colors flex items-center gap-1 cursor-pointer"
                         >
                           <ShieldCheck className="w-3 h-3 text-amber-400" />
                           <span>Fill Admin Credentials (admin@fleetops.com)</span>
@@ -1022,10 +1486,10 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
                     <div>
                       <label htmlFor="login-email" className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wide">
-                        {isStaff ? 'Staff Email Address' : 'Work Email Address'}
+                        {isStaff ? 'Staff Email Address' : 'Email Address'}
                       </label>
                       <div className="relative">
-                        <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                        <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                         <input
                           id="login-email"
                           required
@@ -1035,7 +1499,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                             setEmail(e.target.value);
                             if (!emailTouched) setEmailTouched(true);
                           }}
-                          placeholder={isStaff ? 'e.g. admin@fleetops.com or john.m@fleetops.com' : 'e.g. robert@acmecorp.com'}
+                          placeholder="Enter your email"
                           className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/30 transition-all font-mono"
                         />
                       </div>
@@ -1051,12 +1515,22 @@ export const LoginView: React.FC<LoginViewProps> = ({
                         <label htmlFor="login-password" className="block text-xs font-semibold text-slate-300 uppercase tracking-wide">
                           Password
                         </label>
-                        <span className="text-[11px] text-slate-500 hover:text-amber-400 cursor-pointer transition-colors">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMode('forgot-password');
+                            setForgotStep(1);
+                            setForgotEmail(email || '');
+                            setForgotError(null);
+                            setForgotSuccessMsg(null);
+                          }}
+                          className="text-[11px] text-slate-500 hover:text-amber-400 cursor-pointer transition-colors font-mono"
+                        >
                           Forgot password?
-                        </span>
+                        </button>
                       </div>
                       <div className="relative">
-                        <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                        <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                         <input
                           id="login-password"
                           required
@@ -1066,14 +1540,14 @@ export const LoginView: React.FC<LoginViewProps> = ({
                             setPassword(e.target.value);
                             if (!passwordTouched) setPasswordTouched(true);
                           }}
-                          placeholder="••••••••••••"
+                          placeholder="Enter your password"
                           className="w-full pl-10 pr-10 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/30 transition-all font-mono"
                         />
                         <button
                           type="button"
                           onClick={() => setShowPassword(!showPassword)}
                           aria-label={showPassword ? 'Hide password' : 'Show password'}
-                          className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-200 transition-colors p-1"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-amber-400 transition-colors p-1.5 rounded-lg hover:bg-slate-800/80 cursor-pointer flex items-center justify-center"
                         >
                           {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                         </button>
@@ -1099,7 +1573,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                     <button
                       type="submit"
                       disabled={loading}
-                      className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 disabled:opacity-60 text-slate-950 font-bold text-xs py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 font-['Oswald'] uppercase tracking-wider mt-2 active:scale-98"
+                      className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 disabled:opacity-60 text-slate-950 font-bold text-xs py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 font-['Oswald'] uppercase tracking-wider mt-2 active:scale-98 cursor-pointer"
                     >
                       {loading ? (
                         <>
@@ -1122,14 +1596,14 @@ export const LoginView: React.FC<LoginViewProps> = ({
                         Full Name
                       </label>
                       <div className="relative">
-                        <User className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                        <User className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                         <input
                           id="reg-name"
                           required
                           type="text"
                           value={name}
                           onChange={(e) => setName(e.target.value)}
-                          placeholder="e.g. Marcus Vance"
+                          placeholder="Enter your full name"
                           className="w-full pl-10 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/30"
                         />
                       </div>
@@ -1140,14 +1614,14 @@ export const LoginView: React.FC<LoginViewProps> = ({
                         Email Address
                       </label>
                       <div className="relative">
-                        <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                        <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                         <input
                           id="reg-email"
                           required
                           type="email"
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
-                          placeholder="marcus@company.com"
+                          placeholder="Enter your email"
                           className="w-full pl-10 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/30 font-mono"
                         />
                       </div>
@@ -1158,13 +1632,13 @@ export const LoginView: React.FC<LoginViewProps> = ({
                         Phone Number (Optional)
                       </label>
                       <div className="relative">
-                        <Phone className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                        <Phone className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                         <input
                           id="reg-phone"
                           type="text"
                           value={phone}
                           onChange={(e) => setPhone(e.target.value)}
-                          placeholder="+1 (555) 234-5678"
+                          placeholder="Enter your phone number (optional)"
                           className="w-full pl-10 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/30"
                         />
                       </div>
@@ -1175,36 +1649,56 @@ export const LoginView: React.FC<LoginViewProps> = ({
                         <label htmlFor="reg-pass" className="block text-xs font-semibold text-slate-300 mb-1 uppercase tracking-wide">
                           Password
                         </label>
-                        <input
-                          id="reg-pass"
-                          required
-                          type="password"
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          placeholder="Min 6 chars"
-                          className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 font-mono"
-                        />
+                        <div className="relative">
+                          <input
+                            id="reg-pass"
+                            required
+                            type={showRegPassword ? 'text' : 'password'}
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            placeholder="Enter your password"
+                            className="w-full pl-3 pr-8 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 font-mono"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowRegPassword(!showRegPassword)}
+                            aria-label={showRegPassword ? 'Hide password' : 'Show password'}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-amber-400 p-1 cursor-pointer"
+                          >
+                            {showRegPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
                       </div>
                       <div>
                         <label htmlFor="reg-confirm" className="block text-xs font-semibold text-slate-300 mb-1 uppercase tracking-wide">
                           Confirm
                         </label>
-                        <input
-                          id="reg-confirm"
-                          required
-                          type="password"
-                          value={confirmPassword}
-                          onChange={(e) => setConfirmPassword(e.target.value)}
-                          placeholder="Re-enter password"
-                          className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 font-mono"
-                        />
+                        <div className="relative">
+                          <input
+                            id="reg-confirm"
+                            required
+                            type={showConfirmPassword ? 'text' : 'password'}
+                            value={confirmPassword}
+                            onChange={(e) => setConfirmPassword(e.target.value)}
+                            placeholder="Confirm password"
+                            className="w-full pl-3 pr-8 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 font-mono"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                            aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-amber-400 p-1 cursor-pointer"
+                          >
+                            {showConfirmPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
                       </div>
                     </div>
 
                     <button
                       type="submit"
                       disabled={loading}
-                      className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 disabled:opacity-60 text-slate-950 font-bold text-xs py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 font-['Oswald'] uppercase tracking-wider mt-2 active:scale-98"
+                      className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 disabled:opacity-60 text-slate-950 font-bold text-xs py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 font-['Oswald'] uppercase tracking-wider mt-2 active:scale-98 cursor-pointer"
                     >
                       {loading ? (
                         <>

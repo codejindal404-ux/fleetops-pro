@@ -786,7 +786,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ user, onCreateStaff, searc
                   type="password"
                   value={editFormData.newPassword}
                   onChange={(e) => setEditFormData({ ...editFormData, newPassword: e.target.value })}
-                  placeholder="••••••••"
+                  placeholder="Enter new password"
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-500 font-mono"
                 />
               </div>
@@ -965,6 +965,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ user, onCreateStaff, searc
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter initial password"
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-500 font-mono"
                 />
               </div>

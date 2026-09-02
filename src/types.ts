@@ -23,17 +23,43 @@ export interface User {
   createdAt?: string;
 }
 
+export interface VehicleServiceHistoryRecord {
+  id: string;
+  date: string;
+  type: string;
+  mileage: number;
+  cost?: number;
+  notes?: string;
+  mechanicName?: string;
+}
+
 export interface Vehicle {
   id: string;
+  vehicleId?: string;
   ownerId: string;
   registrationNumber: string;
+  company?: string;
   brand: string;
   model: string;
-  year: number;
+  variant?: string;
   vehicleType: string;
   type?: string;
-  createdAt: string;
+  category?: string;
+  fuelType?: 'Petrol' | 'Diesel' | 'Electric' | 'Hybrid' | 'CNG' | 'LPG' | 'Hydrogen' | string;
+  transmission?: 'Manual' | 'Automatic' | 'CVT' | 'Dual-Clutch' | 'Single-Speed' | string;
+  manufacturingYear?: number;
+  year: number;
+  engineNumber?: string;
+  chassisNumber?: string;
+  color?: string;
   mileage?: number;
+  batteryCapacity?: number; // kWh (for EV)
+  range?: number; // km (for EV)
+  vehicleImage?: string;
+  serviceHistory?: VehicleServiceHistoryRecord[];
+  healthScore?: number; // 0 - 100
+  createdAt: string;
+  updatedAt?: string;
   lastServiceMileage?: number;
   nextMaintenanceMileage?: number;
   avgMonthlyMileage?: number;
@@ -45,6 +71,23 @@ export interface Vehicle {
   lastReminderSentAt?: string;
   reminderStatus?: 'OK' | 'DUE_SOON' | 'OVERDUE';
   serviceReminderNotes?: string;
+}
+
+export interface VehicleFleetStats {
+  totalVehicles: number;
+  totalEVs: number;
+  totalHybrids: number;
+  totalICE: number;
+  averageHealthScore: number;
+  byCategory: Record<string, number>;
+  byFuelType: Record<string, number>;
+  byBrand: Array<{ brand: string; count: number }>;
+  healthScoreDistribution: {
+    excellent: number; // 90-100
+    good: number; // 75-89
+    fair: number; // 50-74
+    attention: number; // < 50
+  };
 }
 
 export interface ServiceReminderEvaluation {

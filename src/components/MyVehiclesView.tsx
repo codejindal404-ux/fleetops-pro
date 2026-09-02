@@ -421,50 +421,65 @@ export const MyVehiclesView: React.FC<MyVehiclesViewProps> = ({
                     referrerPolicy="no-referrer"
                     className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500 opacity-90"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/20 to-transparent" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-950/30 to-transparent" />
 
                   {/* Top Overlay Badges */}
-                  <div className="absolute top-3 left-3 right-3 flex justify-between items-center">
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold tracking-wider uppercase backdrop-blur-md shadow-sm ${illus.badgeBg}`}>
+                  <div className="absolute top-3 left-3 right-3 flex justify-between items-center gap-1.5 flex-wrap">
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold tracking-wider uppercase backdrop-blur-md shadow-sm ${illus.badgeBg}`}>
                       <TypeIcon className="w-3.5 h-3.5" />
-                      <span>{v.vehicleType || illus.label}</span>
+                      <span>{v.category || v.vehicleType || illus.label}</span>
                     </span>
 
-                    {/* 30-Day Reminder Badge */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedReminderVehicle(v);
-                      }}
-                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold border backdrop-blur-md shadow-sm transition-all hover:scale-105 ${
-                        reminderStatus === 'OVERDUE'
-                          ? 'bg-rose-500/90 text-white border-rose-300 animate-pulse'
-                          : reminderStatus === 'DUE_SOON'
-                          ? 'bg-amber-500/95 text-slate-950 border-amber-300'
-                          : 'bg-slate-900/80 text-emerald-400 border-emerald-500/40'
-                      }`}
-                    >
-                      <Bell className="w-3 h-3" />
-                      <span>
-                        {reminderStatus === 'OVERDUE'
-                          ? 'Overdue'
-                          : reminderStatus === 'DUE_SOON'
-                          ? 'Due in 30d'
-                          : 'Service OK'}
-                      </span>
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      {v.fuelType && (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-slate-950/80 text-amber-300 border border-amber-500/30 backdrop-blur-md">
+                          {v.fuelType}
+                        </span>
+                      )}
+
+                      {/* 30-Day Reminder Badge */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedReminderVehicle(v);
+                        }}
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold border backdrop-blur-md shadow-sm transition-all hover:scale-105 ${
+                          reminderStatus === 'OVERDUE'
+                            ? 'bg-rose-500/90 text-white border-rose-300 animate-pulse'
+                            : reminderStatus === 'DUE_SOON'
+                            ? 'bg-amber-500/95 text-slate-950 border-amber-300'
+                            : 'bg-slate-900/80 text-emerald-400 border-emerald-500/40'
+                        }`}
+                      >
+                        <Bell className="w-3 h-3" />
+                        <span>
+                          {reminderStatus === 'OVERDUE'
+                            ? 'Overdue'
+                            : reminderStatus === 'DUE_SOON'
+                            ? 'Due 30d'
+                            : 'OK'}
+                        </span>
+                      </button>
+                    </div>
                   </div>
 
                   {/* Bottom Banner Title Overlay */}
                   <div className="absolute bottom-3 left-3 right-3 flex justify-between items-end">
                     <div>
                       <h3 className="text-lg font-bold text-white font-['Oswald'] uppercase drop-shadow-md tracking-wide">
-                        {v.brand} {v.model}
+                        {v.company || v.brand} {v.model}
                       </h3>
-                      <p className="text-[11px] font-mono font-semibold text-amber-400 tracking-wider drop-shadow-sm">
-                        REG: {v.registrationNumber}
-                      </p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[11px] font-mono font-semibold text-amber-400 tracking-wider drop-shadow-sm">
+                          REG: {v.registrationNumber}
+                        </span>
+                        {v.variant && (
+                          <span className="text-[10px] font-mono text-slate-300 truncate max-w-[120px]">
+                            • {v.variant}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <button
@@ -478,9 +493,20 @@ export const MyVehiclesView: React.FC<MyVehiclesViewProps> = ({
                 </div>
 
                 {/* Body Details */}
-                <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
+                <div className="p-5 flex-1 flex flex-col justify-between space-y-3.5">
+                  {/* Health Score Gauge */}
+                  <div className="bg-slate-50 rounded-xl p-2.5 border border-slate-100 flex items-center justify-between text-xs font-mono">
+                    <div className="flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                      <span className="text-slate-600 font-semibold text-[11px]">Vehicle Health Score</span>
+                    </div>
+                    <span className="font-bold text-emerald-700 text-xs px-2 py-0.5 rounded bg-emerald-100 border border-emerald-200">
+                      {v.healthScore ?? 95}%
+                    </span>
+                  </div>
+
                   {/* Service Horizon & Telemetry Bar */}
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <div className="flex justify-between items-center text-xs font-mono">
                       <span className="text-slate-500 flex items-center gap-1">
                         <Gauge className="w-3.5 h-3.5 text-slate-400" />
@@ -493,22 +519,32 @@ export const MyVehiclesView: React.FC<MyVehiclesViewProps> = ({
                     </div>
 
                     {/* Next Maintenance Interval Info */}
-                    <div className="bg-slate-50 rounded-xl p-2.5 border border-slate-100 flex items-center justify-between text-xs font-mono">
-                      <span className="text-slate-500 text-[11px]">Next Milestone</span>
-                      <span className="font-bold text-slate-900 text-[11px]">
-                        {(v.nextMaintenanceMileage || ((v.mileage || 0) + 5000)).toLocaleString()} mi
+                    <div className="flex items-center justify-between text-xs font-mono text-slate-500">
+                      <span className="text-[11px]">Transmission:</span>
+                      <span className="font-semibold text-slate-800 text-[11px]">
+                        {v.transmission || 'Automatic'}
                       </span>
                     </div>
+
+                    {/* EV Specific Spec Preview */}
+                    {v.batteryCapacity && (
+                      <div className="flex items-center justify-between text-xs font-mono text-amber-700 bg-amber-50/70 px-2 py-1 rounded-lg border border-amber-200">
+                        <span className="text-[10px] font-bold">EV Battery: {v.batteryCapacity} kWh</span>
+                        <span className="text-[10px] font-bold">Range: {v.range || '500'} km</span>
+                      </div>
+                    )}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-100 text-xs">
+                  <div className="grid grid-cols-2 gap-3 pt-2.5 border-t border-slate-100 text-xs">
                     <div>
-                      <p className="text-[10px] uppercase font-mono font-bold text-slate-400">Manufacture Year</p>
-                      <p className="font-semibold text-slate-800 font-mono mt-0.5">{v.year}</p>
+                      <p className="text-[10px] uppercase font-mono font-bold text-slate-400">Year / Engine</p>
+                      <p className="font-semibold text-slate-800 font-mono mt-0.5 text-[11px]">
+                        {v.manufacturingYear || v.year} {v.engineNumber ? `• ${v.engineNumber.substring(0, 8)}...` : ''}
+                      </p>
                     </div>
                     <div>
                       <p className="text-[10px] uppercase font-mono font-bold text-slate-400">Bay Queue / Status</p>
-                      <p className="font-semibold text-slate-800 font-mono truncate mt-0.5">
+                      <p className="font-semibold text-slate-800 font-mono truncate mt-0.5 text-[11px]">
                         {activeBooking ? activeBooking.serviceType : 'In Fleet Operations'}
                       </p>
                     </div>
@@ -598,18 +634,18 @@ export const MyVehiclesView: React.FC<MyVehiclesViewProps> = ({
 
         return (
           <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full overflow-hidden shadow-2xl space-y-0 text-white relative">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-3xl w-full overflow-hidden shadow-2xl space-y-0 text-white relative max-h-[90vh] flex flex-col">
               {/* Close Button */}
               <button
                 type="button"
                 onClick={() => setSelectedPreviewVehicle(null)}
-                className="absolute top-4 right-4 z-10 p-2 rounded-full bg-slate-950/80 text-slate-300 hover:text-white border border-white/20 transition-all"
+                className="absolute top-4 right-4 z-10 p-2 rounded-full bg-slate-950/80 text-slate-300 hover:text-white border border-white/20 transition-all cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
 
               {/* Full Image Banner */}
-              <div className="relative h-64 sm:h-72 w-full bg-slate-950 overflow-hidden">
+              <div className="relative h-60 w-full bg-slate-950 overflow-hidden shrink-0">
                 <img
                   src={modalIllus.img}
                   alt={modalIllus.alt}
@@ -621,13 +657,18 @@ export const MyVehiclesView: React.FC<MyVehiclesViewProps> = ({
                 <div className="absolute top-4 left-4 flex items-center gap-2">
                   <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-mono font-bold uppercase ${modalIllus.badgeBg}`}>
                     <ModalIcon className="w-4 h-4" />
-                    <span>{selectedPreviewVehicle.vehicleType || modalIllus.label}</span>
+                    <span>{selectedPreviewVehicle.category || selectedPreviewVehicle.vehicleType || modalIllus.label}</span>
                   </span>
+                  {selectedPreviewVehicle.fuelType && (
+                    <span className="px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-slate-950/80 text-amber-300 border border-amber-500/30 backdrop-blur-md">
+                      {selectedPreviewVehicle.fuelType}
+                    </span>
+                  )}
                 </div>
 
                 <div className="absolute bottom-4 left-6 right-6">
                   <h3 className="text-2xl font-bold font-['Oswald'] uppercase text-white tracking-wide">
-                    {selectedPreviewVehicle.brand} {selectedPreviewVehicle.model}
+                    {selectedPreviewVehicle.company || selectedPreviewVehicle.brand} {selectedPreviewVehicle.model} {selectedPreviewVehicle.variant ? `(${selectedPreviewVehicle.variant})` : ''}
                   </h3>
                   <p className="text-xs font-mono font-bold text-amber-400 mt-1">
                     REGISTRATION NUMBER: {selectedPreviewVehicle.registrationNumber}
@@ -636,19 +677,55 @@ export const MyVehiclesView: React.FC<MyVehiclesViewProps> = ({
               </div>
 
               {/* Specification Specs & Service History Footer */}
-              <div className="p-6 space-y-4 bg-slate-900 max-h-[60vh] overflow-y-auto">
-                <div className="grid grid-cols-3 gap-4 bg-slate-950 border border-slate-800 p-4 rounded-xl font-mono text-xs">
+              <div className="p-6 space-y-4 bg-slate-900 overflow-y-auto flex-1">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-950 border border-slate-800 p-4 rounded-xl font-mono text-xs">
                   <div>
                     <p className="text-[10px] text-slate-400 uppercase font-bold">Category</p>
-                    <p className="text-white font-bold mt-0.5">{selectedPreviewVehicle.vehicleType || 'CAR'}</p>
+                    <p className="text-white font-bold mt-0.5">{selectedPreviewVehicle.category || selectedPreviewVehicle.vehicleType || 'CAR'}</p>
                   </div>
                   <div>
-                    <p className="text-[10px] text-slate-400 uppercase font-bold">Model Year</p>
-                    <p className="text-white font-bold mt-0.5">{selectedPreviewVehicle.year}</p>
+                    <p className="text-[10px] text-slate-400 uppercase font-bold">Manufacture Year</p>
+                    <p className="text-white font-bold mt-0.5">{selectedPreviewVehicle.manufacturingYear || selectedPreviewVehicle.year}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-slate-400 uppercase font-bold">Transmission</p>
+                    <p className="text-white font-bold mt-0.5">{selectedPreviewVehicle.transmission || 'Automatic'}</p>
                   </div>
                   <div>
                     <p className="text-[10px] text-slate-400 uppercase font-bold">Current Odometer</p>
-                    <p className="text-amber-400 font-bold mt-0.5">{(selectedPreviewVehicle.mileage ?? 45000).toLocaleString()} mi</p>
+                    <p className="text-amber-400 font-bold mt-0.5">{(selectedPreviewVehicle.mileage ?? 15000).toLocaleString()} mi</p>
+                  </div>
+                  {selectedPreviewVehicle.engineNumber && (
+                    <div className="col-span-2">
+                      <p className="text-[10px] text-slate-400 uppercase font-bold">Engine Number</p>
+                      <p className="text-slate-200 font-mono mt-0.5">{selectedPreviewVehicle.engineNumber}</p>
+                    </div>
+                  )}
+                  {selectedPreviewVehicle.chassisNumber && (
+                    <div className="col-span-2">
+                      <p className="text-[10px] text-slate-400 uppercase font-bold">Chassis Number / VIN</p>
+                      <p className="text-slate-200 font-mono mt-0.5">{selectedPreviewVehicle.chassisNumber}</p>
+                    </div>
+                  )}
+                  {selectedPreviewVehicle.batteryCapacity && (
+                    <div>
+                      <p className="text-[10px] text-amber-400 uppercase font-bold">EV Battery Capacity</p>
+                      <p className="text-amber-300 font-bold mt-0.5">{selectedPreviewVehicle.batteryCapacity} kWh</p>
+                    </div>
+                  )}
+                  {selectedPreviewVehicle.range && (
+                    <div>
+                      <p className="text-[10px] text-amber-400 uppercase font-bold">Certified Range</p>
+                      <p className="text-amber-300 font-bold mt-0.5">{selectedPreviewVehicle.range} km</p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-[10px] text-emerald-400 uppercase font-bold">Health Score</p>
+                    <p className="text-emerald-300 font-bold mt-0.5">{selectedPreviewVehicle.healthScore ?? 95}% Optimal</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-slate-400 uppercase font-bold">Color / Finish</p>
+                    <p className="text-slate-200 font-mono mt-0.5">{selectedPreviewVehicle.color || 'Pearl White'}</p>
                   </div>
                 </div>
 
@@ -705,7 +782,7 @@ export const MyVehiclesView: React.FC<MyVehiclesViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setSelectedPreviewVehicle(null)}
-                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition-all"
+                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition-all cursor-pointer"
                   >
                     Close Preview
                   </button>
@@ -716,7 +793,7 @@ export const MyVehiclesView: React.FC<MyVehiclesViewProps> = ({
                       setSelectedPreviewVehicle(null);
                       onBookServiceForVehicle(v);
                     }}
-                    className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl font-['Oswald'] uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm"
+                    className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl font-['Oswald'] uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
                   >
                     <Wrench className="w-4 h-4" />
                     <span>Book Service For Vehicle</span>
@@ -730,4 +807,6 @@ export const MyVehiclesView: React.FC<MyVehiclesViewProps> = ({
     </div>
   );
 };
+
+export default MyVehiclesView;
 

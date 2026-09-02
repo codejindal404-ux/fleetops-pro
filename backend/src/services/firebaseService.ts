@@ -191,6 +191,18 @@ export class FirebaseService {
     return vehs.length > 0 ? vehs[0] : null;
   }
 
+  public async getVehicleByEngineNumber(engineNo: string) {
+    if (!engineNo || !engineNo.trim()) return null;
+    const vehs = await this.getCollection('vehicles', [{ field: 'engineNumber', op: '==', value: engineNo.trim().toUpperCase() }]);
+    return vehs.length > 0 ? vehs[0] : null;
+  }
+
+  public async getVehicleByChassisNumber(chassisNo: string) {
+    if (!chassisNo || !chassisNo.trim()) return null;
+    const vehs = await this.getCollection('vehicles', [{ field: 'chassisNumber', op: '==', value: chassisNo.trim().toUpperCase() }]);
+    return vehs.length > 0 ? vehs[0] : null;
+  }
+
   // Bookings
   public async getBookingsByCustomer(customerId: string) {
     return this.getCollection('bookings', [{ field: 'customerId', op: '==', value: customerId }]);

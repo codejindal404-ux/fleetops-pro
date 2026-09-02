@@ -1,7 +1,9 @@
 import { User, Vehicle, Booking, Invoice, Role, AuditLog, MarketplaceListing, MarketplaceInquiry, AnalyticsSummary, ServiceCenter, ServiceCenterRecommendation, ServiceCenterWorkingStatus } from '../types.ts';
 
+const API_BASE_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+
 const getHeaders = () => {
-  const token = localStorage.getItem('fleetops_token');
+  const token = localStorage.getItem('fleetops_token') || localStorage.getItem('token');
   const headers: Record<string, string> = {
     'Content-Type': 'application/json'
   };
@@ -12,11 +14,13 @@ const getHeaders = () => {
 };
 
 async function requestJson(url: string, options: RequestInit = {}) {
-  const res = await fetch(url, options);
+  const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url}`;
+  const res = await fetch(fullUrl, options);
   const data = await res.json().catch(() => ({}));
   
   if (res.status === 401) {
     localStorage.removeItem('fleetops_token');
+    localStorage.removeItem('token');
   }
   
   if (!res.ok) {
@@ -53,6 +57,30 @@ export const apiClient = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pendingToken })
+    });
+  },
+
+  async forgotPassword(email: string) {
+    return requestJson('/api/auth/forgot-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+  },
+
+  async resetPassword(resetToken: string, code: string, newPassword: string) {
+    return requestJson('/api/auth/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resetToken, code, newPassword })
+    });
+  },
+
+  async resendResetOtp(resetToken: string) {
+    return requestJson('/api/auth/resend-reset-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resetToken })
     });
   },
 
@@ -486,13 +514,41 @@ export const apiClient = {
     });
   },
 
-  // General Vehicles
+  // General Vehicles & Global Database Catalog
   async getVehicles(): Promise<Vehicle[]> {
     const data = await requestJson('/api/vehicles', { headers: getHeaders() });
     return data.vehicles || [];
   },
 
-  async addVehicle(vehicleData: { registrationNumber: string; brand: string; model: string; year: number; vehicleType?: string }) {
+  async getVehicleCatalog(): Promise<{ catalog: any[] }> {
+    return requestJson('/api/vehicles/catalog', { headers: getHeaders() });
+  },
+
+  async getVehicleCategories(): Promise<{ categories: string[] }> {
+    return requestJson('/api/vehicles/catalog/categories', { headers: getHeaders() });
+  },
+
+  async addCatalogCompany(data: { company: string; country?: string; category?: string; vehicles?: any[] }): Promise<{ message: string; company: any }> {
+    return requestJson('/api/vehicles/catalog/company', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+  },
+
+  async addCatalogModel(data: { company: string; model: string; type?: string; fuel?: string[]; transmissions?: string[]; defaultBatteryCapacity?: number; defaultRange?: number }): Promise<{ message: string }> {
+    return requestJson('/api/vehicles/catalog/model', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+  },
+
+  async getVehicleStats(): Promise<{ stats: any }> {
+    return requestJson('/api/vehicles/stats', { headers: getHeaders() });
+  },
+
+  async addVehicle(vehicleData: Partial<Vehicle>) {
     const data = await requestJson('/api/vehicles', {
       method: 'POST',
       headers: getHeaders(),
@@ -508,7 +564,7 @@ export const apiClient = {
     });
   },
 
-  async updateVehicle(id: string, updates: Partial<{ registrationNumber: string; brand: string; model: string; year: number; vehicleType: string; mileage: number; serviceIntervalMonths: number; serviceIntervalMileage: number; avgMonthlyMileage: number; recurringReminderEnabled: boolean; serviceReminderNotes: string; lastServiceDate: string }>) {
+  async updateVehicle(id: string, updates: Partial<Vehicle>) {
     const data = await requestJson(`/api/vehicles/${id}`, {
       method: 'PUT',
       headers: getHeaders(),

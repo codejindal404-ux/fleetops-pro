@@ -1,6 +1,19 @@
 import { Router } from 'express';
 import { body } from 'express-validator';
-import { register, login, verifyOtp, resendOtp, getMe, getUsers, createStaff, updateProfile, deleteUser } from '../controllers/authController.ts';
+import {
+  register,
+  login,
+  verifyOtp,
+  resendOtp,
+  getMe,
+  getUsers,
+  createStaff,
+  updateProfile,
+  deleteUser,
+  forgotPassword,
+  resetPassword,
+  resendResetOtp
+} from '../controllers/authController.ts';
 import { authMiddleware } from '../middlewares/authMiddleware.ts';
 import { restrictTo } from '../middlewares/roleMiddleware.ts';
 import { authLimiter, loginLimiter, sensitiveAuthLimiter } from '../middlewares/rateLimiters.ts';
@@ -44,6 +57,32 @@ router.post(
   '/resend-otp',
   sensitiveAuthLimiter,
   resendOtp
+);
+
+router.post(
+  '/forgot-password',
+  sensitiveAuthLimiter,
+  [
+    body('email').trim().isEmail().isLength({ max: 150 }).withMessage('Valid email address is required')
+  ],
+  forgotPassword
+);
+
+router.post(
+  '/reset-password',
+  sensitiveAuthLimiter,
+  [
+    body('resetToken').notEmpty().withMessage('Reset authorization token is required'),
+    body('code').trim().isLength({ min: 6, max: 6 }).withMessage('6-digit verification code is required'),
+    body('newPassword').isLength({ min: 6, max: 128 }).withMessage('New password must be between 6 and 128 characters')
+  ],
+  resetPassword
+);
+
+router.post(
+  '/resend-reset-otp',
+  sensitiveAuthLimiter,
+  resendResetOtp
 );
 
 router.get('/me', authMiddleware, getMe);

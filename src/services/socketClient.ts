@@ -27,8 +27,14 @@ class SocketClientManager {
       this.socket.disconnect();
     }
 
-    // Connect to same origin
-    this.socket = io({
+    // Connect to backend server or same origin
+    const backendUrl = (import.meta.env.VITE_API_URL || import.meta.env.VITE_WS_URL || '').replace(/\/$/, '');
+    this.socket = backendUrl ? io(backendUrl, {
+      auth: { token: activeToken },
+      transports: ['websocket', 'polling'],
+      reconnectionAttempts: 5,
+      reconnectionDelay: 2000
+    }) : io({
       auth: { token: activeToken },
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 5,
