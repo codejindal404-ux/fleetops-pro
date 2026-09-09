@@ -128,8 +128,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         })}
       </nav>
 
-      {/* RBAC Test Suite Trigger */}
-      {onOpenRBACTestSuite && (
+      {/* RBAC Test Suite Trigger (Admin Only) */}
+      {user?.role === 'ADMIN' && onOpenRBACTestSuite && (
         <div className="px-3 pb-2">
           <button
             onClick={onOpenRBACTestSuite}

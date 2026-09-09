@@ -29,14 +29,19 @@ export const TopBar: React.FC<TopBarProps> = ({
   onBookServiceForVehicle
 }) => {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState<boolean>(false);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState<boolean>(false);
   const [filterType, setFilterType] = useState<'ALL' | 'OVERDUE' | 'DUE_SOON'>('ALL');
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdown on click outside
+  // Close dropdowns on click outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsNotificationsOpen(false);
+      }
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
+        setIsProfileMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -135,15 +140,17 @@ export const TopBar: React.FC<TopBarProps> = ({
           </div>
         )}
 
-        {/* Postman Collection Viewer Button */}
-        <button
-          onClick={onOpenPostman}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-800 bg-slate-900 text-slate-300 hover:text-amber-400 hover:border-amber-500/40 text-xs font-mono font-semibold transition-all shadow-sm"
-          title="View & Export Postman API Collection"
-        >
-          <Code2 className="w-3.5 h-3.5 text-amber-500" />
-          <span>Postman API</span>
-        </button>
+        {/* Postman Collection Viewer Button (Admin Only) */}
+        {user?.role === 'ADMIN' && (
+          <button
+            onClick={onOpenPostman}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-800 bg-slate-900 text-slate-300 hover:text-amber-400 hover:border-amber-500/40 text-xs font-mono font-semibold transition-all shadow-sm cursor-pointer"
+            title="View & Export Postman API Collection"
+          >
+            <Code2 className="w-3.5 h-3.5 text-amber-500" />
+            <span>Postman API</span>
+          </button>
+        )}
 
         {/* Real-Time Socket.IO Notification System */}
         <NotificationBell token={token || null} onNavigate={onNavigate} />
@@ -314,15 +321,84 @@ export const TopBar: React.FC<TopBarProps> = ({
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={onLogout}
-          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-slate-800 bg-slate-900 text-slate-300 hover:text-rose-400 hover:border-rose-500/30 hover:bg-rose-500/10 text-xs font-semibold transition-all shadow-sm"
-          title="Sign Out of Session"
-        >
-          <LogOut className="w-3.5 h-3.5 text-rose-500/80" />
-          <span className="hidden sm:inline font-['Oswald'] uppercase tracking-wider">Sign Out</span>
-        </button>
+        {/* User Profile & Settings Menu Dropdown */}
+        {user && (
+          <div className="relative" ref={profileMenuRef}>
+            <button
+              type="button"
+              onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+              className="flex items-center gap-2 p-1 pl-2.5 pr-2 rounded-xl border border-slate-800 bg-slate-900 hover:border-amber-500/40 hover:bg-slate-800/80 transition-all cursor-pointer group"
+              title="Account Profile & Settings"
+            >
+              <div className="text-right hidden sm:block">
+                <span className="text-xs font-semibold text-slate-200 group-hover:text-amber-400 transition-colors block leading-tight">
+                  {user.name.split(' ')[0]}
+                </span>
+                <span className="text-[9px] font-mono text-slate-500 capitalize leading-none">
+                  {user.role}
+                </span>
+              </div>
+              <div className="w-7 h-7 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center font-mono font-bold text-xs text-amber-400">
+                {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
+              </div>
+            </button>
+
+            {/* Profile Dropdown Menu */}
+            {isProfileMenuOpen && (
+              <div className="absolute right-0 mt-3 w-64 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                {/* User Info Header */}
+                <div className="p-3.5 bg-slate-950 border-b border-slate-800">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center font-mono font-bold text-sm text-amber-400 shrink-0">
+                      {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
+                    </div>
+                    <div className="truncate">
+                      <p className="text-xs font-bold text-slate-100 truncate">{user.name}</p>
+                      <p className="text-[10px] text-slate-400 font-mono truncate">{user.email}</p>
+                    </div>
+                  </div>
+                  <div className="mt-2 pt-2 border-t border-slate-900 flex items-center justify-between">
+                    <span className="text-[10px] text-slate-500 uppercase font-mono tracking-wider">Access Role</span>
+                    <span className="text-[10px] font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30 uppercase">
+                      {user.role}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Options List */}
+                <div className="p-1.5 space-y-1">
+                  {onOpenEditProfile && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsProfileMenuOpen(false);
+                        onOpenEditProfile();
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-300 hover:text-amber-400 hover:bg-slate-800/80 rounded-xl transition-all text-left font-mono cursor-pointer"
+                    >
+                      <UserCog className="w-4 h-4 text-amber-500" />
+                      <span>Profile & Settings</span>
+                    </button>
+                  )}
+
+                  <div className="border-t border-slate-800/80 my-1" />
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsProfileMenuOpen(false);
+                      onLogout();
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-xl transition-all text-left font-mono cursor-pointer"
+                  >
+                    <LogOut className="w-4 h-4 text-rose-500" />
+                    <span>Sign Out</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </header>
   );

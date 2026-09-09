@@ -195,8 +195,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotEmailTouched, setForgotEmailTouched] = useState(false);
   const [resetToken, setResetToken] = useState<string | null>(null);
-  const [resetIsDevFallback, setResetIsDevFallback] = useState(false);
-  const [resetDevCode, setResetDevCode] = useState<string | null>(null);
   const [resetOtpDigits, setResetOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
@@ -220,14 +218,12 @@ export const LoginView: React.FC<LoginViewProps> = ({
   // 2FA OTP step states
   const [pendingToken, setPendingToken] = useState<string | null>(initialPendingAuth?.pendingToken || null);
   const [pendingEmail, setPendingEmail] = useState<string>(initialPendingAuth?.email || '');
-  const [isDevFallback, setIsDevFallback] = useState<boolean>(false);
-  const [devCode, setDevCode] = useState<string | null>(null);
   const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [otpLoading, setOtpLoading] = useState(false);
   const [otpError, setOtpError] = useState<string | null>(null);
   const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null);
   const [otpInfoMessage, setOtpInfoMessage] = useState<string | null>(
-    initialPendingAuth ? 'Verification code sent!' : null
+    initialPendingAuth ? 'OTP sent successfully to your email' : null
   );
 
   useEffect(() => {
@@ -235,17 +231,17 @@ export const LoginView: React.FC<LoginViewProps> = ({
       setPendingToken(initialPendingAuth.pendingToken);
       setPendingEmail(initialPendingAuth.email);
       setOtpDigits(['', '', '', '', '', '']);
-      setOtpTimeRemaining(300);
+      setOtpTimeRemaining(600);
       setResendCooldown(60);
       setOtpError(null);
       setRemainingAttempts(null);
-      setOtpInfoMessage('Verification code sent! (Check server console for code)');
+      setOtpInfoMessage('OTP sent successfully to your email');
       setIsBooting(false);
     }
   }, [initialPendingAuth]);
 
-  // Timers: 5-minute expiry countdown & 60-second resend cooldown
-  const [otpTimeRemaining, setOtpTimeRemaining] = useState<number>(300);
+  // Timers: 10-minute expiry countdown & 60-second resend cooldown
+  const [otpTimeRemaining, setOtpTimeRemaining] = useState<number>(600);
   const [resendCooldown, setResendCooldown] = useState<number>(60);
   const [resendLoading, setResendLoading] = useState<boolean>(false);
 
@@ -356,20 +352,12 @@ export const LoginView: React.FC<LoginViewProps> = ({
       if (res.pendingToken) {
         setPendingToken(res.pendingToken);
         setPendingEmail(res.email || cleanEmail);
-        setIsDevFallback(Boolean(res.devFallback));
-        if (res.devCode) {
-          setDevCode(res.devCode);
-          // Auto fill first box or full code
-          const codeStr = String(res.devCode);
-          if (codeStr.length === 6) {
-            setOtpDigits(codeStr.split(''));
-          }
-        }
-        setOtpTimeRemaining(300);
+        setOtpDigits(['', '', '', '', '', '']);
+        setOtpTimeRemaining(600);
         setResendCooldown(60);
         setOtpError(null);
         setRemainingAttempts(null);
-        setOtpInfoMessage(res.message || 'Verification code generated.');
+        setOtpInfoMessage(res.message || 'OTP sent successfully to your email');
       } else if (res.token) {
         // Fallback if 2FA disabled
         const meRes = await apiClient.getMe();
@@ -389,7 +377,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
     setEmailTouched(true);
     setPasswordTouched(true);
 
-    const cleanEmail = email.trim();
+    const cleanEmail = email.trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
       setError('Please enter a valid email address.');
       return;
@@ -400,24 +388,28 @@ export const LoginView: React.FC<LoginViewProps> = ({
       return;
     }
 
-    if (password !== confirmPassword) {
-      setError('Passwords do not match. Please check and try again.');
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters long.');
       return;
     }
 
-    if (!isPasswordValid) {
-      setError('Password must be at least 6 characters long.');
+    if (password !== confirmPassword) {
+      setError('Passwords do not match. Please check and try again.');
       return;
     }
 
     setLoading(true);
 
     try {
-      await apiClient.register(name, cleanEmail, password, phone);
-      const meRes = await apiClient.getMe();
-      onLoginSuccess(meRes.user);
+      const res = await apiClient.register(name.trim(), cleanEmail, password, phone?.trim());
+      if (res?.user) {
+        onLoginSuccess(res.user);
+      } else {
+        const meRes = await apiClient.getMe();
+        onLoginSuccess(meRes.user);
+      }
     } catch (err: any) {
-      setError(err.message || 'Registration failed. Email may already be in use.');
+      setError(err.message || 'Registration failed. This email may already be registered.');
     } finally {
       setLoading(false);
     }
@@ -513,18 +505,11 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
     try {
       const res = await apiClient.resendOtp(pendingToken);
-      setIsDevFallback(Boolean(res.devFallback));
-      if (res.devCode) {
-        setDevCode(res.devCode);
-        const codeStr = String(res.devCode);
-        if (codeStr.length === 6) {
-          setOtpDigits(codeStr.split(''));
-        }
-      }
-      setOtpTimeRemaining(300);
+      setOtpDigits(['', '', '', '', '', '']);
+      setOtpTimeRemaining(600);
       setResendCooldown(60);
       setRemainingAttempts(null);
-      setOtpInfoMessage(res.message || 'Fresh code generated.');
+      setOtpInfoMessage(res.message || 'OTP sent successfully to your email');
       otpInputRefs[0].current?.focus();
     } catch (err: any) {
       setOtpError(err.message || 'Failed to resend verification code.');
@@ -569,14 +554,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
     try {
       const res = await apiClient.forgotPassword(cleanEmail);
       setResetToken(res.resetToken);
-      setResetIsDevFallback(Boolean(res.devFallback));
-      if (res.devCode) {
-        setResetDevCode(res.devCode);
-        const codeStr = String(res.devCode);
-        if (codeStr.length === 6) {
-          setResetOtpDigits(codeStr.split(''));
-        }
-      }
+      setResetOtpDigits(['', '', '', '', '', '']);
       setResetTimeRemaining(600);
       setResetResendCooldown(60);
       setForgotStep(2);
@@ -677,14 +655,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
     setForgotError(null);
 
     try {
-      const res = await apiClient.resendResetOtp(resetToken);
-      if (res.devCode) {
-        setResetDevCode(res.devCode);
-        const codeStr = String(res.devCode);
-        if (codeStr.length === 6) {
-          setResetOtpDigits(codeStr.split(''));
-        }
-      }
+      await apiClient.resendResetOtp(resetToken);
+      setResetOtpDigits(['', '', '', '', '', '']);
       setResetTimeRemaining(600);
       setResetResendCooldown(60);
       resetOtpInputRefs[0].current?.focus();
@@ -939,41 +911,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
                   </div>
                 )}
 
-                {/* On-Screen OTP Display Banner (For Admin, Mechanic & Customer testing) */}
-                {devCode && (
-                  <div className="mb-5 p-4 bg-gradient-to-r from-amber-500/20 via-amber-500/15 to-amber-600/20 border-2 border-amber-500/60 rounded-2xl shadow-xl shadow-amber-500/10 animate-in fade-in duration-300">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div>
-                        <div className="flex items-center gap-1.5 text-amber-400 text-[11px] font-mono font-bold uppercase tracking-wider mb-1">
-                          <Key className="w-3.5 h-3.5 text-amber-400" />
-                          <span>YOUR LOGIN OTP CODE (ON-SCREEN)</span>
-                        </div>
-                        <div className="flex items-center gap-2.5">
-                          <span className="text-2xl font-mono font-black text-amber-300 tracking-[0.25em] bg-slate-950 px-3.5 py-1 rounded-xl border border-amber-500/50 shadow-inner">
-                            {devCode}
-                          </span>
-                          <span className="text-[11px] text-slate-300 font-sans">
-                            Use this code to complete sign-in
-                          </span>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const digits = devCode.split('');
-                          setOtpDigits(digits);
-                          submitOtpCode(devCode);
-                        }}
-                        className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl transition-all shadow-md shadow-amber-500/30 flex items-center justify-center gap-1.5 cursor-pointer font-['Oswald'] uppercase tracking-wider active:scale-95 shrink-0"
-                      >
-                        <CheckCircle2 className="w-4 h-4" />
-                        <span>Auto-Fill & Verify</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-
                 {/* Error Banner */}
                 {otpError && (
                   <div role="alert" className="mb-4 p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300 flex items-start gap-2.5">
@@ -1050,33 +987,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
                       )}
                     </button>
                   </div>
-
-                  {/* Dev Fallback Notice with Auto-fill option */}
-                  {devCode && (
-                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center justify-between text-xs font-mono">
-                      <div>
-                        <span className="text-[10px] text-slate-400 block uppercase tracking-wider">Dev Mode Code</span>
-                        <span className="font-bold text-amber-400 text-sm tracking-widest">{devCode}</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const digits = devCode.split('');
-                          setOtpDigits(digits);
-                          submitOtpCode(devCode);
-                        }}
-                        className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg transition-all shadow-md shadow-amber-500/20 active:scale-95"
-                      >
-                        Auto-Fill Code
-                      </button>
-                    </div>
-                  )}
-
-                  {isDevFallback && !devCode && (
-                    <div className="p-2.5 bg-slate-900/80 border border-slate-800 rounded-lg text-[11px] text-slate-400 font-mono text-center">
-                      <span className="text-amber-400/90 font-semibold">Dev Note:</span> SMTP not configured — check server console for code.
-                    </div>
-                  )}
 
                   {/* Submit Button */}
                   <button
@@ -1187,7 +1097,11 @@ export const LoginView: React.FC<LoginViewProps> = ({
                     <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
                     <div className="flex-1">
                       <p className="font-bold text-rose-200">
-                        {mode === 'forgot-password' ? 'Password Reset Notice' : 'Authentication Failure'}
+                        {mode === 'forgot-password'
+                          ? 'Password Reset Notice'
+                          : mode === 'register'
+                          ? 'Registration Failed'
+                          : 'Authentication Failure'}
                       </p>
                       <p className="mt-0.5">{error || forgotError}</p>
                     </div>
@@ -1273,28 +1187,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
                   ) : forgotStep === 2 ? (
                     /* Step 2: Enter OTP & New Password */
                     <form onSubmit={handleResetPasswordSubmit} className="space-y-4" noValidate>
-                      {/* On-Screen Dev Code Banner if available */}
-                      {resetDevCode && (
-                        <div className="p-3.5 bg-gradient-to-r from-amber-500/20 via-amber-500/15 to-amber-600/20 border-2 border-amber-500/60 rounded-xl shadow-lg shadow-amber-500/10 mb-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <div>
-                              <span className="text-[10px] text-amber-400 font-mono font-bold uppercase block">RESET OTP CODE (ON-SCREEN)</span>
-                              <span className="text-xl font-mono font-black text-amber-300 tracking-[0.2em]">{resetDevCode}</span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const digits = resetDevCode.split('');
-                                setResetOtpDigits(digits);
-                              }}
-                              className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg transition-all font-['Oswald'] uppercase cursor-pointer"
-                            >
-                              Auto-Fill
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
                       <div>
                         <label className="block text-xs font-semibold text-slate-300 mb-2 uppercase tracking-wide font-mono text-center">
                           6-Digit Password Reset Code

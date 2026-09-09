@@ -15,11 +15,15 @@ export const config = {
     ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
     : ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://0.0.0.0:3000'],
   smtp: {
-    host: process.env.SMTP_HOST || '',
-    port: parseInt(process.env.SMTP_PORT || '587', 10),
-    user: process.env.SMTP_USER || '',
-    pass: process.env.SMTP_PASS || '',
-    from: process.env.SMTP_FROM || 'FleetOps Pro <noreply@fleetops.com>'
+    host: process.env.EMAIL_HOST || process.env.SMTP_HOST || 'smtp.gmail.com',
+    port: parseInt(process.env.EMAIL_PORT || process.env.SMTP_PORT || '587', 10),
+    user: process.env.EMAIL_USER || process.env.SMTP_USER || '',
+    pass: process.env.EMAIL_PASS || process.env.SMTP_PASS || '',
+    from: process.env.EMAIL_FROM || process.env.SMTP_FROM || 'FleetOps Pro <noreply@fleetops.com>'
   },
-  smtpConfigured: Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS)
+  smtpConfigured: Boolean(
+    (process.env.EMAIL_USER || process.env.SMTP_USER) &&
+    (process.env.EMAIL_PASS || process.env.SMTP_PASS)
+  )
 };
+

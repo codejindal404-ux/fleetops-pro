@@ -592,7 +592,9 @@ function MainAppContent() {
       )}
 
       {/* Modals */}
-      <PostmanViewerModal isOpen={isPostmanOpen} onClose={() => setIsPostmanOpen(false)} />
+      {user?.role === 'ADMIN' && (
+        <PostmanViewerModal isOpen={isPostmanOpen} onClose={() => setIsPostmanOpen(false)} />
+      )}
 
       <NewServiceModal
         isOpen={isNewServiceOpen}
@@ -625,13 +627,16 @@ function MainAppContent() {
         onClose={() => setIsEditProfileOpen(false)}
         user={user}
         onProfileUpdated={() => refreshUser()}
+        onLogout={handleLogout}
       />
 
-      <RBACTestSuiteModal
-        isOpen={isRBACTestSuiteOpen}
-        onClose={() => setIsRBACTestSuiteOpen(false)}
-        currentUser={user}
-      />
+      {user?.role === 'ADMIN' && (
+        <RBACTestSuiteModal
+          isOpen={isRBACTestSuiteOpen}
+          onClose={() => setIsRBACTestSuiteOpen(false)}
+          currentUser={user}
+        />
+      )}
     </div>
   );
 }

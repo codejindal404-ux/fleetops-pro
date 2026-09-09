@@ -21,6 +21,31 @@ export interface QueryFilter {
   value: any;
 }
 
+/**
+ * Recursively strip undefined values so Firestore does not reject the document write
+ */
+function sanitizeFirestoreData(obj: any): any {
+  if (obj === undefined) {
+    return null;
+  }
+  if (obj === null) {
+    return null;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(sanitizeFirestoreData);
+  }
+  if (typeof obj === 'object' && !(obj instanceof Date)) {
+    const cleaned: Record<string, any> = {};
+    for (const [key, val] of Object.entries(obj)) {
+      if (val !== undefined) {
+        cleaned[key] = sanitizeFirestoreData(val);
+      }
+    }
+    return cleaned;
+  }
+  return obj;
+}
+
 export class FirebaseService {
   /**
    * Create or overwrite a document in a Firestore collection
@@ -33,12 +58,13 @@ export class FirebaseService {
     try {
       const now = new Date().toISOString();
       const id = customId || `${collectionName.slice(0, 3)}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-      const docData = {
+      const rawData = {
         ...data,
         id,
         createdAt: data.createdAt || now,
         updatedAt: data.updatedAt || now
       };
+      const docData = sanitizeFirestoreData(rawData);
 
       const docRef = doc(firestore, collectionName, id);
       await setDoc(docRef, docData);
@@ -135,10 +161,11 @@ export class FirebaseService {
         return null;
       }
 
-      const updateData = {
+      const rawUpdate = {
         ...updates,
         updatedAt: new Date().toISOString()
       };
+      const updateData = sanitizeFirestoreData(rawUpdate);
 
       await updateDoc(docRef, updateData);
       const updatedSnap = await getDoc(docRef);

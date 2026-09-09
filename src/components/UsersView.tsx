@@ -209,13 +209,23 @@ export const UsersView: React.FC<UsersViewProps> = ({ user, onCreateStaff, searc
 
   // Filtered lists
   const filteredCustomers = useMemo(() => {
+    const q = search.toLowerCase().trim();
     return customers.filter((c) => {
-      return (
-        !search ||
-        c.name.toLowerCase().includes(search.toLowerCase()) ||
-        c.email.toLowerCase().includes(search.toLowerCase()) ||
-        (c.phone && c.phone.toLowerCase().includes(search.toLowerCase()))
-      );
+      if (!q) return true;
+      // Match name, email, phone
+      if (c.name.toLowerCase().includes(q)) return true;
+      if (c.email.toLowerCase().includes(q)) return true;
+      if (c.phone && c.phone.toLowerCase().includes(q)) return true;
+      // Match vehicle plate / registration number
+      if (c.vehicles && Array.isArray(c.vehicles)) {
+        return c.vehicles.some((v: any) =>
+          (v.registrationNumber || v.plateNumber || v.plate || '')
+            .toLowerCase()
+            .replace(/\s+/g, '')
+            .includes(q.replace(/\s+/g, ''))
+        );
+      }
+      return false;
     });
   }, [customers, search]);
 
@@ -350,15 +360,24 @@ export const UsersView: React.FC<UsersViewProps> = ({ user, onCreateStaff, searc
         </div>
 
         {/* Search */}
-        <div className="relative w-full md:w-64">
+        <div className="relative w-full md:w-72">
           <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-500" />
           <input
             type="text"
-            placeholder="Search by name, email, phone..."
+            placeholder="Search name, email, phone, plate no..."
             value={internalSearch}
             onChange={(e) => setInternalSearch(e.target.value)}
             className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/50"
           />
+          {internalSearch && (
+            <button
+              onClick={() => setInternalSearch('')}
+              className="absolute right-2.5 top-2 text-slate-500 hover:text-white transition-colors cursor-pointer"
+              title="Clear search"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          )}
         </div>
       </div>
 
@@ -408,13 +427,37 @@ export const UsersView: React.FC<UsersViewProps> = ({ user, onCreateStaff, searc
                         </td>
 
                         <td className="py-3.5 px-4">
-                          <button
-                            onClick={() => setSelectedCustomerFleet(cust)}
-                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-950 border border-slate-800 text-amber-400 hover:border-amber-500/40 transition-colors font-mono cursor-pointer"
-                          >
-                            <Car className="w-3 h-3 text-amber-400" />
-                            <span>{cust.vehicleCount ?? (cust.vehicles?.length || 0)} Vehicles</span>
-                          </button>
+                          <div className="flex flex-col gap-1">
+                            <button
+                              onClick={() => setSelectedCustomerFleet(cust)}
+                              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-950 border border-slate-800 text-amber-400 hover:border-amber-500/40 transition-colors font-mono cursor-pointer w-fit"
+                            >
+                              <Car className="w-3 h-3 text-amber-400" />
+                              <span>{cust.vehicleCount ?? (cust.vehicles?.length || 0)} Vehicles</span>
+                            </button>
+                            {/* Show vehicle plate numbers as compact tags */}
+                            {cust.vehicles && cust.vehicles.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-0.5">
+                                {cust.vehicles.slice(0, 3).map((v: any, i: number) => {
+                                  const plate = v.registrationNumber || v.plateNumber || v.plate || null;
+                                  return plate ? (
+                                    <span
+                                      key={i}
+                                      title={`${v.brand || ''} ${v.model || ''} ${v.year || ''}`.trim()}
+                                      className="px-1.5 py-0 rounded text-[9px] font-mono font-bold bg-slate-800 border border-slate-700 text-slate-400 tracking-widest uppercase"
+                                    >
+                                      {plate.replace(/\s+/g, '-').toUpperCase()}
+                                    </span>
+                                  ) : null;
+                                })}
+                                {cust.vehicles.length > 3 && (
+                                  <span className="px-1.5 py-0 rounded text-[9px] font-mono bg-slate-800 border border-slate-700 text-slate-500">
+                                    +{cust.vehicles.length - 3} more
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </td>
 
                         <td className="py-3.5 px-4">

@@ -3,6 +3,7 @@ import { body } from 'express-validator';
 import {
   register,
   login,
+  requestOtp,
   verifyOtp,
   resendOtp,
   getMe,
@@ -16,11 +17,21 @@ import {
 } from '../controllers/authController.ts';
 import { authMiddleware } from '../middlewares/authMiddleware.ts';
 import { restrictTo } from '../middlewares/roleMiddleware.ts';
-import { authLimiter, loginLimiter, sensitiveAuthLimiter } from '../middlewares/rateLimiters.ts';
+import {
+  authLimiter,
+  loginLimiter,
+  sensitiveAuthLimiter,
+  otpRequestLimiter,
+  otpVerifyLimiter
+} from '../middlewares/rateLimiters.ts';
 
 const router = Router();
 
 router.use(authLimiter);
+
+// ---------------------------------------------------------
+// User Registration & Login
+// ---------------------------------------------------------
 
 router.post(
   '/register',
@@ -44,20 +55,50 @@ router.post(
   login
 );
 
+// ---------------------------------------------------------
+// Standard OTP Endpoints (Email Verification & 2FA)
+// ---------------------------------------------------------
+
+// POST /api/auth/otp/request
+router.post(
+  '/otp/request',
+  otpRequestLimiter,
+  [
+    body('email').trim().isEmail().isLength({ max: 150 }).withMessage('Valid email is required')
+  ],
+  requestOtp
+);
+
+// POST /api/auth/otp/verify
+router.post(
+  '/otp/verify',
+  otpVerifyLimiter,
+  verifyOtp
+);
+
+// POST /api/auth/otp/resend
+router.post(
+  '/otp/resend',
+  otpRequestLimiter,
+  resendOtp
+);
+
+// Legacy/Compatibility OTP endpoints
 router.post(
   '/verify-otp',
-  sensitiveAuthLimiter,
-  [
-    body('code').trim().isLength({ min: 6, max: 6 }).withMessage('6-digit code is required')
-  ],
+  otpVerifyLimiter,
   verifyOtp
 );
 
 router.post(
   '/resend-otp',
-  sensitiveAuthLimiter,
+  otpRequestLimiter,
   resendOtp
 );
+
+// ---------------------------------------------------------
+// Password Recovery Endpoints
+// ---------------------------------------------------------
 
 router.post(
   '/forgot-password',
@@ -73,7 +114,8 @@ router.post(
   sensitiveAuthLimiter,
   [
     body('resetToken').notEmpty().withMessage('Reset authorization token is required'),
-    body('code').trim().isLength({ min: 6, max: 6 }).withMessage('6-digit verification code is required'),
+    body('code').optional().trim(),
+    body('otp').optional().trim(),
     body('newPassword').isLength({ min: 6, max: 128 }).withMessage('New password must be between 6 and 128 characters')
   ],
   resetPassword
@@ -85,7 +127,12 @@ router.post(
   resendResetOtp
 );
 
+// ---------------------------------------------------------
+// User Profile & Management (Protected)
+// ---------------------------------------------------------
+
 router.get('/me', authMiddleware, getMe);
+
 router.put(
   '/profile',
   authMiddleware,
@@ -97,6 +144,7 @@ router.put(
   ],
   updateProfile
 );
+
 router.get('/users', authMiddleware, restrictTo('ADMIN', 'MECHANIC'), getUsers);
 
 router.post(

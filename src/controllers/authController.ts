@@ -15,7 +15,10 @@ import {
   verifyResetToken,
   createAndSendResetOTP,
   verifyResetOTP,
-  resendResetOTP
+  resendResetOTP,
+  requestOtp as requestOtpService,
+  verifyOtpCode,
+  resendOtpCode
 } from '../services/otpService.ts';
 
 const generateToken = (userId: string, role: Role): string => {
@@ -95,12 +98,13 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Generate 5-minute pending token and create/send 2FA OTP code
+    // Generate 5-minute pending token and create/send 2FA OTP code via email
     const pendingToken = generatePendingToken(user.id);
     const otpResult = await createAndSendOTP(user.id, user.email);
 
     res.status(200).json({
-      message: 'A verification code has been sent. Please check your email or server console.',
+      success: true,
+      message: otpResult.message || 'A verification code has been sent. Please check your email.',
       pendingToken,
       email: user.email
     });
@@ -110,50 +114,117 @@ export const login = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
+/**
+ * Handles POST /api/auth/otp/request
+ * Validates email, generates 6-digit OTP, saves hashed to Firestore, sends email via Nodemailer
+ */
+export const requestOtp = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({ success: false, errors: errors.array(), message: errors.array()[0].msg });
+      return;
+    }
+
+    const { email } = req.body;
+    const normalizedEmail = (email || '').trim().toLowerCase();
+
+    if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      res.status(400).json({ success: false, message: 'Valid email address is required.' });
+      return;
+    }
+
+    const result = await requestOtpService(normalizedEmail, req.ip);
+
+    if (!result.success) {
+      res.status(result.retryAfter ? 429 : 400).json({
+        success: false,
+        message: result.message,
+        retryAfter: result.retryAfter
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'OTP sent successfully to your email'
+    });
+  } catch (error: any) {
+    console.error('requestOtp error:', error);
+    res.status(500).json({ success: false, message: 'Server error requesting OTP', error: error.message });
+  }
+};
+
+/**
+ * Handles POST /api/auth/otp/verify and POST /api/auth/verify-otp
+ * Validates 6-digit OTP from email / pending token against Firestore
+ */
 export const verifyOtp = async (req: Request, res: Response): Promise<void> => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      res.status(400).json({ errors: errors.array(), message: errors.array()[0].msg });
+      res.status(400).json({ success: false, errors: errors.array(), message: errors.array()[0].msg });
       return;
     }
 
     const authHeader = req.headers.authorization;
     const pendingToken =
       req.body.pendingToken || (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null);
-    const code = (req.body.code || req.body.otpCode || '').toString().trim();
+    const code = (req.body.otp || req.body.code || req.body.otpCode || '').toString().trim();
+    const email = req.body.email ? req.body.email.trim().toLowerCase() : null;
 
-    if (!pendingToken) {
-      res.status(401).json({ message: 'Missing pending authentication token.' });
+    if (!code || code.length !== 6) {
+      res.status(400).json({ success: false, message: '6-digit verification code is required.' });
       return;
     }
 
-    if (!code) {
-      res.status(400).json({ message: '6-digit verification code is required.' });
+    // Branch A: Standalone email OTP verification
+    if (email && !pendingToken) {
+      const result = await verifyOtpCode(email, code);
+      if (!result.success) {
+        res.status(400).json({
+          success: false,
+          message: result.message || 'Invalid or expired OTP',
+          remainingAttempts: result.remainingAttempts
+        });
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        message: 'Email verified successfully'
+      });
+      return;
+    }
+
+    // Branch B: 2FA Login session token verification
+    if (!pendingToken && !email) {
+      res.status(401).json({ success: false, message: 'Missing pending authentication token or email.' });
       return;
     }
 
     let userId: string;
     try {
-      const verified = verifyPendingToken(pendingToken);
+      const verified = verifyPendingToken(pendingToken!);
       userId = verified.userId;
     } catch (err: any) {
-      res.status(401).json({ message: err.message || 'Pending token expired or invalid. Please log in again.' });
-      return;
-    }
-
-    const result = verifyOTP(userId, code);
-    if (!result.success) {
-      res.status(401).json({
-        message: result.message || 'Invalid verification code.',
-        remainingAttempts: result.remainingAttempts
-      });
+      res.status(401).json({ success: false, message: err.message || 'Pending token expired or invalid. Please log in again.' });
       return;
     }
 
     const user = await firebaseService.getUserById(userId);
     if (!user) {
-      res.status(404).json({ message: 'User account not found.' });
+      res.status(404).json({ success: false, message: 'User account not found.' });
+      return;
+    }
+
+    const result = await verifyOTP(userId, code, user.email);
+    if (!result.success) {
+      res.status(401).json({
+        success: false,
+        message: result.message || 'Invalid or expired OTP',
+        remainingAttempts: result.remainingAttempts
+      });
       return;
     }
 
@@ -162,24 +233,47 @@ export const verifyOtp = async (req: Request, res: Response): Promise<void> => {
     const { password: _, ...userWithoutPassword } = user;
 
     res.status(200).json({
+      success: true,
       message: 'Authentication successful',
       token,
       user: userWithoutPassword
     });
   } catch (error: any) {
     console.error('Verify OTP error:', error);
-    res.status(500).json({ message: 'Server error during OTP verification', error: error.message });
+    res.status(500).json({ success: false, message: 'Server error during OTP verification', error: error.message });
   }
 };
 
+/**
+ * Handles POST /api/auth/otp/resend and POST /api/auth/resend-otp
+ */
 export const resendOtp = async (req: Request, res: Response): Promise<void> => {
   try {
     const authHeader = req.headers.authorization;
     const pendingToken =
       req.body.pendingToken || (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null);
+    const rawEmail = req.body.email ? req.body.email.trim().toLowerCase() : null;
+
+    if (rawEmail && !pendingToken) {
+      const result = await resendOtpCode(rawEmail, req.ip);
+      if (!result.success) {
+        res.status(result.retryAfter ? 429 : 400).json({
+          success: false,
+          message: result.message,
+          retryAfter: result.retryAfter
+        });
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        message: 'OTP sent successfully to your email'
+      });
+      return;
+    }
 
     if (!pendingToken) {
-      res.status(401).json({ message: 'Missing pending authentication token.' });
+      res.status(401).json({ success: false, message: 'Missing pending authentication token or email.' });
       return;
     }
 
@@ -188,28 +282,29 @@ export const resendOtp = async (req: Request, res: Response): Promise<void> => {
       const verified = verifyPendingToken(pendingToken);
       userId = verified.userId;
     } catch (err: any) {
-      res.status(401).json({ message: err.message || 'Pending token expired or invalid. Please log in again.' });
+      res.status(401).json({ success: false, message: err.message || 'Pending token expired or invalid. Please log in again.' });
       return;
     }
 
     const user = await firebaseService.getUserById(userId);
     if (!user) {
-      res.status(404).json({ message: 'User account not found.' });
+      res.status(404).json({ success: false, message: 'User account not found.' });
       return;
     }
 
     const result = await resendOTP(userId, user.email);
     if (!result.success) {
-      res.status(429).json({ message: result.message, retryAfter: result.retryAfter });
+      res.status(429).json({ success: false, message: result.message, retryAfter: result.retryAfter });
       return;
     }
 
     res.status(200).json({
-      message: 'A fresh verification code has been sent. Please check your email or server console.'
+      success: true,
+      message: 'OTP sent successfully to your email'
     });
   } catch (error: any) {
     console.error('Resend OTP error:', error);
-    res.status(500).json({ message: 'Server error during OTP resend', error: error.message });
+    res.status(500).json({ success: false, message: 'Server error during OTP resend', error: error.message });
   }
 };
 
@@ -421,22 +516,18 @@ export const forgotPassword = async (req: Request, res: Response): Promise<void>
 
     const user = await firebaseService.getUserByEmail(normalizedEmail);
     if (!user) {
-      // For security and UX consistency, inform user if email is not found
       res.status(404).json({ message: 'No registered account found with that email address.' });
       return;
     }
 
     const resetToken = generateResetToken(user.id);
-    const delivery = await createAndSendResetOTP(user.id, user.email);
+    await createAndSendResetOTP(user.id, user.email);
 
     res.status(200).json({
-      message: delivery.devFallback
-        ? 'A password reset code has been generated. Check the server console or on-screen code.'
-        : 'A password reset code has been sent to your email address.',
+      success: true,
+      message: 'A password reset code has been sent to your email address.',
       resetToken,
-      email: user.email,
-      devFallback: delivery.devFallback,
-      devCode: delivery.devFallback ? delivery.code : undefined
+      email: user.email
     });
   } catch (error: any) {
     console.error('forgotPassword error:', error);
@@ -453,7 +544,7 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
     }
 
     const { resetToken, code, newPassword } = req.body;
-    const cleanCode = (code || '').toString().trim();
+    const cleanCode = (code || req.body.otp || '').toString().trim();
 
     if (!resetToken) {
       res.status(401).json({ message: 'Missing password reset authorization token.' });
@@ -479,10 +570,10 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    const otpResult = verifyResetOTP(userId, cleanCode);
+    const otpResult = await verifyResetOTP(userId, cleanCode);
     if (!otpResult.success) {
       res.status(401).json({
-        message: otpResult.message || 'Invalid password reset code.',
+        message: otpResult.message || 'Invalid or expired OTP',
         remainingAttempts: otpResult.remainingAttempts
       });
       return;
@@ -553,9 +644,8 @@ export const resendResetOtp = async (req: Request, res: Response): Promise<void>
     }
 
     res.status(200).json({
-      message: 'A fresh password reset code has been sent. Please check your email or server console.',
-      devFallback: result.devFallback,
-      devCode: result.devFallback ? result.code : undefined
+      success: true,
+      message: 'A fresh password reset code has been sent to your email.'
     });
   } catch (error: any) {
     console.error('resendResetOtp error:', error);

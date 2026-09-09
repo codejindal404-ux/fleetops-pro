@@ -151,13 +151,13 @@ export const addVehicle = async (req: Request, res: Response): Promise<void> => 
       transmission: transmission || 'Automatic',
       manufacturingYear: effectiveYear,
       year: effectiveYear,
-      engineNumber: engineNumber ? engineNumber.trim().toUpperCase() : undefined,
-      chassisNumber: chassisNumber ? chassisNumber.trim().toUpperCase() : undefined,
+      engineNumber: engineNumber ? engineNumber.trim().toUpperCase() : '',
+      chassisNumber: chassisNumber ? chassisNumber.trim().toUpperCase() : '',
       color: color?.trim() || 'Metallic Pearl White',
       mileage: defaultMileage,
-      batteryCapacity: batteryCapacity ? Number(batteryCapacity) : undefined,
-      range: range ? Number(range) : undefined,
-      vehicleImage: vehicleImage || undefined,
+      batteryCapacity: batteryCapacity ? Number(batteryCapacity) : 0,
+      range: range ? Number(range) : 0,
+      vehicleImage: vehicleImage || '',
       healthScore: initialHealth,
       serviceHistory: [
         {

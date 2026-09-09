@@ -42,21 +42,39 @@ export const apiClient = {
     return data;
   },
 
-  async verifyOtp(pendingToken: string, code: string) {
-    const data = await requestJson('/api/auth/verify-otp', {
+  async requestOtp(email: string) {
+    return requestJson('/api/auth/otp/request', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pendingToken, code })
+      body: JSON.stringify({ email })
+    });
+  },
+
+  async verifyOtp(pendingTokenOrEmail: string, code: string, isEmailOnly = false) {
+    const isEmail = isEmailOnly || (!pendingTokenOrEmail.includes('.') && pendingTokenOrEmail.includes('@'));
+    const payload = isEmail
+      ? { email: pendingTokenOrEmail, otp: code }
+      : { pendingToken: pendingTokenOrEmail, code };
+
+    const data = await requestJson('/api/auth/otp/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
     });
     if (data.token) localStorage.setItem('fleetops_token', data.token);
     return data;
   },
 
-  async resendOtp(pendingToken: string) {
-    return requestJson('/api/auth/resend-otp', {
+  async resendOtp(pendingTokenOrEmail: string) {
+    const isEmail = !pendingTokenOrEmail.includes('.') && pendingTokenOrEmail.includes('@');
+    const payload = isEmail
+      ? { email: pendingTokenOrEmail }
+      : { pendingToken: pendingTokenOrEmail };
+
+    return requestJson('/api/auth/otp/resend', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pendingToken })
+      body: JSON.stringify(payload)
     });
   },
 

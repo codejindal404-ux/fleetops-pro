@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, User as UserIcon, Mail, Phone, Lock, CheckCircle2, AlertCircle, Shield, Eye, EyeOff } from 'lucide-react';
+import { X, User as UserIcon, Mail, Phone, Lock, CheckCircle2, AlertCircle, Shield, Eye, EyeOff, LogOut } from 'lucide-react';
 import { User } from '../types.ts';
 import { apiClient } from '../services/apiClient.ts';
 
@@ -8,13 +8,15 @@ interface EditProfileModalProps {
   onClose: () => void;
   user: User | null;
   onProfileUpdated: (updatedUser: User) => void;
+  onLogout?: () => void;
 }
 
 export const EditProfileModal: React.FC<EditProfileModalProps> = ({
   isOpen,
   onClose,
   user,
-  onProfileUpdated
+  onProfileUpdated,
+  onLogout
 }) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -193,21 +195,38 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
           </div>
 
           {/* Actions */}
-          <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-bold font-['Oswald'] uppercase tracking-wider transition-colors shadow-xs disabled:opacity-50"
-            >
-              {isSubmitting ? 'Saving...' : 'Save Profile Changes'}
-            </button>
+          <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+            {onLogout ? (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onLogout();
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl text-xs font-semibold font-mono transition-colors cursor-pointer"
+                title="Sign out of current account"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Sign Out</span>
+              </button>
+            ) : <div />}
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-bold font-['Oswald'] uppercase tracking-wider transition-colors shadow-xs disabled:opacity-50 cursor-pointer"
+              >
+                {isSubmitting ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
           </div>
         </form>
       </div>

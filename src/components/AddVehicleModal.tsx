@@ -24,6 +24,7 @@ import {
   VehicleModelSpec
 } from '../data/vehicleDatabase.ts';
 import { Vehicle } from '../types.ts';
+import { getVehicleIllustration } from '../utils/vehicleImageHelper.ts';
 
 interface AddVehicleModalProps {
   isOpen: boolean;
