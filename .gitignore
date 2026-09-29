@@ -9,3 +9,5 @@ coverage/
 dev.db.json
 *.db
 *.tmp
+bun.lock
+bun.lockb
