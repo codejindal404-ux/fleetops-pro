@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { validationResult } from 'express-validator';
 import { firebaseService } from '../services/firebaseService.ts';
 import { sendToUser } from '../services/socketService.ts';
-import { Booking, Vehicle, User } from '../../../src/types.ts';
+import { Booking, Vehicle, User } from '../types.ts';
 
 export const getCustomerDashboard = async (req: Request, res: Response): Promise<void> => {
   try {

@@ -1,1 +1,1 @@
-export * from '../../src/utils/permissions.ts';
+export * from '../src/utils/permissions.ts';

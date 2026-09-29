@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
-import { Role } from '../types/index.ts';
-import { Permission, hasPermission } from '../utils/permissions.ts';
+import { Role } from '../types.ts';
+import { Permission, hasPermission } from '../permissions/rolePermissions.ts';
 
 export const restrictTo = (...roles: Role[]) => {
   return (req: Request, res: Response, next: NextFunction): void => {

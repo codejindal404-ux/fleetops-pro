@@ -1,5 +1,5 @@
 import { firebaseService } from './firebaseService.ts';
-import { Vehicle } from '../../../src/types.ts';
+import { Vehicle } from '../types.ts';
 
 export interface AIDiagnosticResult {
   vehicleId: string;

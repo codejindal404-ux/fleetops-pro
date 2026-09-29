@@ -1,5 +1,20 @@
-import { BookingStatus } from '../types/index.ts';
+export type BookingStatus =
+  | 'PENDING'
+  | 'APPROVED'
+  | 'ASSIGNED'
+  | 'INSPECTION'
+  | 'REPAIRING'
+  | 'TESTING'
+  | 'QUALITY_CHECK'
+  | 'COMPLETED'
+  | 'CANCELLED';
 
+/**
+ * Pure function to validate status transition logic.
+ * Enforces forward-only status flow:
+ * PENDING -> APPROVED -> ASSIGNED -> INSPECTION -> REPAIRING -> TESTING -> QUALITY_CHECK -> COMPLETED
+ * PENDING or APPROVED -> CANCELLED
+ */
 export function validateBookingStatusTransition(
   currentStatus: BookingStatus,
   targetStatus: BookingStatus
@@ -20,9 +35,10 @@ export function validateBookingStatusTransition(
     PENDING: ['APPROVED', 'CANCELLED', 'ASSIGNED', 'INSPECTION'],
     APPROVED: ['ASSIGNED', 'INSPECTION', 'REPAIRING', 'CANCELLED'],
     ASSIGNED: ['INSPECTION', 'REPAIRING', 'CANCELLED'],
-    INSPECTION: ['REPAIRING', 'QUALITY_CHECK', 'CANCELLED'],
-    REPAIRING: ['QUALITY_CHECK', 'COMPLETED', 'INSPECTION', 'CANCELLED'],
-    QUALITY_CHECK: ['COMPLETED', 'REPAIRING'],
+    INSPECTION: ['REPAIRING', 'TESTING', 'QUALITY_CHECK', 'CANCELLED'],
+    REPAIRING: ['TESTING', 'QUALITY_CHECK', 'COMPLETED', 'INSPECTION', 'CANCELLED'],
+    TESTING: ['QUALITY_CHECK', 'COMPLETED', 'REPAIRING'],
+    QUALITY_CHECK: ['COMPLETED', 'REPAIRING', 'TESTING'],
     COMPLETED: [],
     CANCELLED: []
   };

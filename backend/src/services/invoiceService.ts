@@ -1,5 +1,5 @@
 import { firebaseService } from './firebaseService.ts';
-import { Invoice } from '../../../src/types.ts';
+import { Invoice } from '../types.ts';
 
 export interface CreateInvoiceParams {
   bookingId: string;

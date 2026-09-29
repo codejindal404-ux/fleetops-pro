@@ -1,6 +1,7 @@
-import { Role, BookingStatus } from '../types/index.ts';
+import { Role, BookingStatus } from '../types.ts';
 
 export type Permission =
+  // Admin permissions
   | 'users:create_mechanic'
   | 'users:manage_all'
   | 'users:update'
@@ -15,12 +16,14 @@ export type Permission =
   | 'marketplace:manage'
   | 'analytics:view'
   | 'reports:manage'
+  // Mechanic permissions
   | 'tasks:view_assigned'
   | 'tasks:update_status'
   | 'tasks:add_repair_log'
   | 'tasks:upload_progress'
   | 'vehicles:view_assigned_job_details'
   | 'marketplace:create_verified'
+  // Customer permissions
   | 'auth:register'
   | 'auth:login_otp'
   | 'vehicles:add_own'
@@ -75,14 +78,22 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   ]
 };
 
+// Mechanic allowed status values (Admin-only statuses PENDING, APPROVED, ASSIGNED removed)
 export const MECHANIC_ALLOWED_STATUSES: BookingStatus[] = [
-  'APPROVED',
-  'ASSIGNED',
   'INSPECTION',
   'REPAIRING',
+  'TESTING',
   'QUALITY_CHECK',
   'COMPLETED'
 ];
+
+// Sequential forward-only workflow transitions strictly allowed for mechanics
+export const MECHANIC_ALLOWED_TRANSITIONS: Record<string, BookingStatus[]> = {
+  ASSIGNED: ['INSPECTION'],
+  INSPECTION: ['REPAIRING'],
+  REPAIRING: ['QUALITY_CHECK'],
+  QUALITY_CHECK: ['COMPLETED']
+};
 
 export const hasPermission = (role: Role, permission: Permission): boolean => {
   const permissions = ROLE_PERMISSIONS[role] || [];
@@ -91,4 +102,9 @@ export const hasPermission = (role: Role, permission: Permission): boolean => {
 
 export const canMechanicUpdateStatus = (targetStatus: BookingStatus): boolean => {
   return MECHANIC_ALLOWED_STATUSES.includes(targetStatus);
+};
+
+export const canMechanicTransition = (currentStatus: string, targetStatus: BookingStatus): boolean => {
+  const allowed = MECHANIC_ALLOWED_TRANSITIONS[currentStatus] || [];
+  return allowed.includes(targetStatus);
 };

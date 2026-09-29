@@ -1,23 +1,9 @@
-import {
-  doc,
-  setDoc,
-  getDoc,
-  collection,
-  getDocs,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  orderBy,
-  limit,
-  WhereFilterOp,
-  OrderByDirection
-} from 'firebase/firestore';
+import admin from 'firebase-admin';
 import { firestore } from '../config/firebase.ts';
 
 export interface QueryFilter {
   field: string;
-  op: WhereFilterOp;
+  op: admin.firestore.WhereFilterOp;
   value: any;
 }
 
@@ -66,8 +52,7 @@ export class FirebaseService {
       };
       const docData = sanitizeFirestoreData(rawData);
 
-      const docRef = doc(firestore, collectionName, id);
-      await setDoc(docRef, docData);
+      await firestore.collection(collectionName).doc(id).set(docData);
       return docData as T;
     } catch (error) {
       console.error(`FirebaseService.createDocument error on ${collectionName}:`, error);
@@ -81,12 +66,11 @@ export class FirebaseService {
   public async getDocument<T = any>(collectionName: string, docId: string): Promise<T | null> {
     try {
       if (!docId) return null;
-      const docRef = doc(firestore, collectionName, docId);
-      const snapshot = await getDoc(docRef);
-      if (!snapshot.exists()) {
+      const snap = await firestore.collection(collectionName).doc(docId).get();
+      if (!snap.exists) {
         return null;
       }
-      return { id: snapshot.id, ...snapshot.data() } as T;
+      return { id: snap.id, ...snap.data() } as T;
     } catch (error) {
       console.error(`FirebaseService.getDocument error on ${collectionName}/${docId}:`, error);
       return null;
@@ -101,13 +85,13 @@ export class FirebaseService {
     filters: QueryFilter[] = []
   ): Promise<T[]> {
     try {
-      const colRef = collection(firestore, collectionName);
-      let q = query(colRef);
+      let q: admin.firestore.Query = firestore.collection(collectionName);
       if (filters.length > 0) {
-        const wheres = filters.map((f) => where(f.field, f.op, f.value));
-        q = query(colRef, ...wheres);
+        for (const f of filters) {
+          q = q.where(f.field, f.op, f.value);
+        }
       }
-      const snapshot = await getDocs(q);
+      const snapshot = await q.get();
       return snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() } as T));
     } catch (error) {
       console.error(`FirebaseService.getCollection error on ${collectionName}:`, error);
@@ -122,22 +106,23 @@ export class FirebaseService {
     collectionName: string,
     filters: QueryFilter[] = [],
     orderByField?: string,
-    orderDirection: OrderByDirection = 'desc',
+    orderDirection: admin.firestore.OrderByDirection = 'desc',
     limitCount?: number
   ): Promise<T[]> {
     try {
-      const colRef = collection(firestore, collectionName);
-      const constraints: any[] = filters.map((f) => where(f.field, f.op, f.value));
+      let q: admin.firestore.Query = firestore.collection(collectionName);
+      for (const f of filters) {
+        q = q.where(f.field, f.op, f.value);
+      }
       
       if (orderByField) {
-        constraints.push(orderBy(orderByField, orderDirection));
+        q = q.orderBy(orderByField, orderDirection);
       }
       if (limitCount && limitCount > 0) {
-        constraints.push(limit(limitCount));
+        q = q.limit(limitCount);
       }
 
-      const q = query(colRef, ...constraints);
-      const snapshot = await getDocs(q);
+      const snapshot = await q.get();
       return snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() } as T));
     } catch (error) {
       console.error(`FirebaseService.queryDocuments error on ${collectionName}:`, error);
@@ -155,9 +140,9 @@ export class FirebaseService {
   ): Promise<T | null> {
     try {
       if (!docId) return null;
-      const docRef = doc(firestore, collectionName, docId);
-      const snapshot = await getDoc(docRef);
-      if (!snapshot.exists()) {
+      const docRef = firestore.collection(collectionName).doc(docId);
+      const snapshot = await docRef.get();
+      if (!snapshot.exists) {
         return null;
       }
 
@@ -167,8 +152,8 @@ export class FirebaseService {
       };
       const updateData = sanitizeFirestoreData(rawUpdate);
 
-      await updateDoc(docRef, updateData);
-      const updatedSnap = await getDoc(docRef);
+      await docRef.update(updateData);
+      const updatedSnap = await docRef.get();
       return { id: updatedSnap.id, ...updatedSnap.data() } as T;
     } catch (error) {
       console.error(`FirebaseService.updateDocument error on ${collectionName}/${docId}:`, error);
@@ -182,12 +167,12 @@ export class FirebaseService {
   public async deleteDocument(collectionName: string, docId: string): Promise<boolean> {
     try {
       if (!docId) return false;
-      const docRef = doc(firestore, collectionName, docId);
-      const snapshot = await getDoc(docRef);
-      if (!snapshot.exists()) {
+      const docRef = firestore.collection(collectionName).doc(docId);
+      const snapshot = await docRef.get();
+      if (!snapshot.exists) {
         return false;
       }
-      await deleteDoc(docRef);
+      await docRef.delete();
       return true;
     } catch (error) {
       console.error(`FirebaseService.deleteDocument error on ${collectionName}/${docId}:`, error);
@@ -200,8 +185,14 @@ export class FirebaseService {
   // Users
   public async getUserByEmail(email: string) {
     if (!email) return null;
-    const users = await this.getCollection('users', [{ field: 'email', op: '==', value: email.trim().toLowerCase() }]);
-    return users.length > 0 ? users[0] : null;
+    const cleanEmail = email.trim().toLowerCase();
+    const users = await this.getCollection('users', [{ field: 'email', op: '==', value: cleanEmail }]);
+    if (users.length > 0) {
+      return users[0];
+    }
+    // Case-insensitive / whitespace-safe fallback across all users
+    const allUsers = await this.getCollection('users');
+    return allUsers.find((u: any) => u.email && u.email.trim().toLowerCase() === cleanEmail) || null;
   }
 
   public async getUserById(id: string) {

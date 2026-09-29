@@ -108,61 +108,39 @@ export async function runFirebaseSeed() {
       createdAt: now,
       updatedAt: now
     },
-    'sc-apex-1'
+    'sc-1'
   );
 
-  // 5. Initial Customer Vehicle
-  const sampleVehicle = await firebaseService.createDocument(
-    'vehicles',
+  // Also maintain sc-apex-1 alias
+  await firebaseService.createDocument(
+    'serviceCenters',
     {
-      ownerId: customerUser.id,
-      registrationNumber: 'DL-01-AX-9942',
-      brand: 'Toyota',
-      model: 'Camry Hybrid',
-      year: 2024,
-      vehicleType: 'Sedan',
-      mileage: 28500,
-      lastServiceMileage: 23500,
-      nextMaintenanceMileage: 30000,
-      serviceIntervalMonths: 6,
-      serviceIntervalMileage: 5000,
-      avgMonthlyMileage: 1200,
-      lastServiceDate: new Date(Date.now() - 120 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      nextServiceDueDate: new Date(Date.now() + 20 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      recurringReminderEnabled: true,
-      reminderStatus: 'DUE_SOON',
-      serviceReminderNotes: 'Periodic 30,000 km Scheduled Inspection',
-      createdAt: now
-    },
-    'veh-sample-1'
-  );
-
-  // 6. Initial Active Booking
-  const sampleBooking = await firebaseService.createDocument(
-    'bookings',
-    {
-      vehicleId: sampleVehicle.id,
-      customerId: customerUser.id,
-      mechanicId: mechanicUser.id,
-      assignedMechanicId: mechanicUser.id,
-      assignedMechanicName: mechanicUser.name,
-      serviceCenterId: serviceCenter1.id,
-      serviceType: 'Periodic Maintenance & Brake Inspection',
-      issueDescription: 'Routine 30k interval check and slight brake squeal',
-      preferredDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
-      status: 'ASSIGNED',
-      priority: 'NORMAL',
-      progressPercentage: 25,
+      name: 'Apex Fleet Auto Hub',
+      address: '42 Industrial Parkway, Tech District',
+      city: 'Delhi',
+      latitude: 28.6315,
+      longitude: 77.2167,
+      phoneNumber: '+91 11 4500 9000',
+      averageRating: 4.9,
+      totalReviews: 84,
+      totalServicesCompleted: 340,
+      experienceYears: 12,
+      isVerified: true,
+      workingStatus: 'OPEN',
+      availableMechanics: 4,
+      specialties: ['Engine Diagnostics', 'Brake Systems', 'Periodic Maintenance'],
+      imageUrl: 'https://images.unsplash.com/photo-1613214149922-f1809c99b414?w=800&auto=format&fit=crop&q=80',
       createdAt: now,
       updatedAt: now
     },
-    'bk-sample-1'
+    'sc-apex-1'
   );
 
   console.log(`✅ Fresh Firebase database initialized successfully!`);
   console.log(`   - Admin:    ${adminUser.email} (Password: Password123!)`);
   console.log(`   - Customer: ${customerUser.email} (Password: Password123!)`);
   console.log(`   - Mechanic: ${mechanicUser.email} (Password: Password123!)`);
+  console.log(`   (Zero sample vehicles or dummy bookings created - clean business dataset)`);
 }
 
 runFirebaseSeed().catch((err) => {
